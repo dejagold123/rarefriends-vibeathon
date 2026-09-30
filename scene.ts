@@ -65,6 +65,8 @@ export type Scene = {
   dash: number;          // seconds of dash left
   dashCd: number;        // seconds until the next dash
   dashDir: { x: number; y: number };
+  shield: number;         // seconds of shield remaining
+  shieldCd: number;       // seconds until shield is available again
   player: { x: number; y: number; facing: Facing; side: "left" | "right"; walking: boolean; anim: number };
   gems: number;          // gems woken so far
   spirits: Spirit[];
@@ -79,7 +81,7 @@ export type Keys = Readonly<{ left: boolean; right: boolean; up: boolean; down: 
 export function createScene(gems = 0): Scene {
   const v = VIRTUAL[gems] ?? FULL_RF;
   const s: Scene = { time: 0, burned: v, burnedTarget: v, burstGlow: 0, flash: 0, flashColor: "#ffd9a0", ring: null, particles: [], spawnAcc: 0,
-    target: null, stuck: 0, detour: 1, dash: 0, dashCd: 0, dashDir: { x: 0, y: 1 }, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 },
+    target: null, stuck: 0, detour: 1, dash: 0, dashCd: 0, dashDir: { x: 0, y: 1 }, shield: 0, shieldCd: 0, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 },
     gems, spirits: [], stun: 0, invuln: 0, hits: 0, drop: null, fly: null };
   spawnSpirits(s);
   return s;
@@ -112,6 +114,12 @@ export function canStand(x: number, y: number, burned: number): boolean {
   for (const l of LANTERNS) if (Math.hypot(x - l.x, y - l.y) < 3.5) return false;
   if (burned >= 10 && ((x - POND.x) / (POND.rx + 2)) ** 2 + ((y - POND.y) / (POND.ry + 2)) ** 2 < 1) return false;
   return true;
+}
+
+/** During shield, the player can walk through obstacles but must stay on the island. */
+export function canMove(x: number, y: number, burned: number, shielded: boolean): boolean {
+  if (shielded) return inIsland(x, y, 6);
+  return canStand(x, y, burned);
 }
 export const currentGem = (s: Scene): Gem | null => (s.gems < GEMS.length ? GEMS[s.gems] : null);
 export const isNearGem = (s: Scene) => { const g = currentGem(s); return !!g && !s.drop && Math.hypot(s.player.x - g.x, (s.player.y - g.y) * 1.2) < GEM_REACH; };
@@ -174,7 +182,7 @@ function updateSpirits(s: Scene, dt: number, reduced: boolean) {
     if (sp.cool <= 0 && s.invuln <= 0 && Math.hypot(p.x - sp.x, p.y - sp.y) < spiritChase(s.gems)) { tx = p.x; ty = p.y; speed *= 1.5; }
     const dx = tx - sp.x, dy = ty - sp.y, d = Math.hypot(dx, dy);
     if (d < 2) pickWaypoint(s, sp, g); else { sp.x += (dx / d) * speed * dt; sp.y += (dy / d) * speed * dt; }
-    if (s.invuln <= 0 && sp.fade > 0.8 && Math.hypot(p.x - sp.x, (p.y - sp.y) * 1.3) < 7) hitPlayer(s, sp, reduced);
+    if (s.invuln <= 0 && s.shield <= 0 && sp.fade > 0.8 && Math.hypot(p.x - sp.x, (p.y - sp.y) * 1.3) < 7) hitPlayer(s, sp, reduced);
   }
 }
 
@@ -197,6 +205,7 @@ export const skipDrop = (s: Scene) => endDrop(s, false);
 
 /* ---------- dash ---------- */
 export const DASH_TIME = 0.18, DASH_SPEED = 150, DASH_CD = 1.3;
+export const SHIELD_TIME = 5, SHIELD_CD = 5;
 /** A short burst of speed. Spirits cannot hit you while dashing or for a moment after. Direction: input, else tapped target, else facing. */
 export function tryDash(s: Scene, ix: number, iy: number): boolean {
   if (s.dashCd > 0 || s.dash > 0 || s.drop || s.stun > 0) return false;
@@ -207,9 +216,18 @@ export function tryDash(s: Scene, ix: number, iy: number): boolean {
   s.dashDir = { x: dx / len, y: dy / len }; s.dash = DASH_TIME; s.dashCd = DASH_CD; s.invuln = Math.max(s.invuln, DASH_TIME + 0.12); s.target = null;
   return true;
 }
+
+/** Activate a 5-second shield that lets the player pass through obstacles and spirits. */
+export function tryShield(s: Scene): boolean {
+  if (s.shield > 0 || s.shieldCd > 0 || s.drop || s.stun > 0) return false;
+  s.shield = SHIELD_TIME; s.shieldCd = SHIELD_TIME + SHIELD_CD;
+  s.invuln = Math.max(s.invuln, SHIELD_TIME);
+  return true;
+}
 function stepDash(s: Scene, dt: number, reduced: boolean) {
   const p = s.player, dist = DASH_SPEED * dt, n = Math.max(1, Math.ceil(dist / 2)), sx = (s.dashDir.x * dist) / n, sy = (s.dashDir.y * dist) / n;
-  for (let i = 0; i < n; i++) { if (canStand(p.x + sx, p.y, s.burned)) p.x += sx; if (canStand(p.x, p.y + sy, s.burned)) p.y += sy; }
+  const shielded = s.shield > 0;
+  for (let i = 0; i < n; i++) { if (canMove(p.x + sx, p.y, s.burned, shielded)) p.x += sx; if (canMove(p.x, p.y + sy, s.burned, shielded)) p.y += sy; }
   s.dash = Math.max(0, s.dash - dt); p.walking = true; p.anim += dt * 2;
   p.facing = Math.abs(s.dashDir.x) > Math.abs(s.dashDir.y) ? (s.dashDir.x > 0 ? "right" : "left") : (s.dashDir.y > 0 ? "down" : "up");
   if (p.facing === "left" || p.facing === "right") p.side = p.facing;
@@ -263,6 +281,7 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
 
   const p = s.player;
   s.invuln = Math.max(0, s.invuln - dt); s.stun = Math.max(0, s.stun - dt); s.dashCd = Math.max(0, s.dashCd - dt);
+  s.shield = Math.max(0, s.shield - dt); s.shieldCd = Math.max(0, s.shieldCd - dt);
   if (s.drop && !o.frozen) {
     s.drop.t += dt;
     const di = dropInfo(s.drop.t);
@@ -278,7 +297,7 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
       if (!o.reduced) { s.ring = { t: 0, c: g.light }; s.flash = Math.max(s.flash, 0.5); s.flashColor = g.light; }
     }
   }
-  if (!canStand(p.x, p.y, s.burned)) { const n = nearestStandable(p.x, p.y, s.burned); p.x = n.x; p.y = n.y; s.target = null; }
+  if (!canMove(p.x, p.y, s.burned, s.shield > 0)) { const n = nearestStandable(p.x, p.y, s.burned); p.x = n.x; p.y = n.y; s.target = null; }
   if (s.stun > 0) s.dash = 0;
   const dashing = s.dash > 0 && !o.frozen && !s.drop;
   if (dashing) { s.target = null; stepDash(s, dt, o.reduced); }
@@ -297,14 +316,15 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
     const len = Math.hypot(dx, dy); dx /= len; dy /= len;
     const nx = p.x + dx * 48 * spd * dt, ny = p.y + dy * 48 * spd * dt;
     const ox = p.x, oy = p.y;
-    if (canStand(nx, p.y, s.burned)) p.x = nx;
-    if (canStand(p.x, ny, s.burned)) p.y = ny;
+    const shielded = s.shield > 0;
+    if (canMove(nx, p.y, s.burned, shielded)) p.x = nx;
+    if (canMove(p.x, ny, s.burned, shielded)) p.y = ny;
     let moved = Math.hypot(p.x - ox, p.y - oy) > 0.01;
     if (s.target && !moved) {
       // blocked on the way to a tapped spot: slide around the obstacle
       for (const sgn of [s.detour, (-s.detour) as 1 | -1]) {
         const sx = p.x - dy * sgn * 48 * spd * dt, sy = p.y + dx * sgn * 48 * spd * dt;
-        if (canStand(sx, sy, s.burned)) { p.x = sx; p.y = sy; s.detour = sgn; moved = true; break; }
+        if (canMove(sx, sy, s.burned, shielded)) { p.x = sx; p.y = sy; s.detour = sgn; moved = true; break; }
       }
     }
     if (s.target) { s.stuck = moved ? 0 : s.stuck + dt; if (s.stuck > 0.3) { s.target = null; s.stuck = 0; } }
@@ -508,7 +528,7 @@ export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, red
   if (cg && !s.drop) items.push({ y: cg.y, draw: () => drawGem(c, cg, t, reduced) });
   if (!s.drop) for (const sp of s.spirits) items.push({ y: sp.y, draw: () => drawSpirit(c, sp, t, reduced) });
   const blink = !reduced && s.invuln > 0 && s.stun <= 0 && Math.floor(t * 12) % 2 === 0;
-  if (playerRows && !dp && !blink) items.push({ y: s.player.y, draw: () => { c.globalAlpha = 0.35; blob(c, s.player.x, s.player.y, 6, 2, "#000000"); c.globalAlpha = 1; drawFriend(c, playerRows, s.player); if (s.stun > 0) drawStars(c, s.player, t); } });
+  if (playerRows && !dp && !blink) items.push({ y: s.player.y, draw: () => { c.globalAlpha = 0.35; blob(c, s.player.x, s.player.y, 6, 2, "#000000"); c.globalAlpha = 1; drawFriend(c, playerRows, s.player); if (s.stun > 0) drawStars(c, s.player, t); if (s.shield > 0) { const sa = 0.25 + 0.15 * Math.sin(t * 6); c.globalAlpha = sa; blob(c, s.player.x, s.player.y - 8, 12, 10, "#4af0ff"); c.globalAlpha = sa * 0.5; blob(c, s.player.x, s.player.y - 8, 14, 12, "#2ab8d0"); c.globalAlpha = 1; } } });
   items.sort((a, z) => a.y - z.y).forEach(i => i.draw());
   if (cg && !s.drop) drawGuide(c, s, cg, t, reduced);
   if (s.fly) { const g = GEMS[s.fly.i], q = flyPos(s.fly.i, Math.min(1, s.fly.t)); R(c, q.x - 2, q.y - 2, 5, 5, g.color); R(c, q.x - 1, q.y - 1, 2, 2, g.light); }

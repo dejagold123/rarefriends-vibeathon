@@ -9,7 +9,7 @@ import { createFriendReader, spriteFrame, type GenerationSprites } from "@rarefr
 import { createFriendSoundKit, type FriendSoundKit, type FriendSoundCue } from "@rarefriends/friendsdk/sounds";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { DASH_CD, EPILOGUE, GEMS, H, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
+import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
 
 type Menu = "gem" | "log" | "settings" | null;
 type Phase = "lore" | "drop" | "play" | "epilogue";
@@ -71,6 +71,8 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   const sound = useRef<FriendSoundKit | null>(null), locked = useRef(false), epoch = useRef(0), nearRef = useRef(false), pendingGem = useRef(false);
   const phaseRef = useRef<Phase>("lore"), hitsRef = useRef(0), endTimer = useRef(0), stickRef = useRef({ x: 0, y: 0 });
   const [dashPct, setDashPct] = useState(1), dashPctRef = useRef(1);
+  const [shieldPct, setShieldPct] = useState(1), shieldPctRef = useRef(1);
+  const [shieldUnlocked, setShieldUnlocked] = useState(false);
   const toastKey = useRef(0), toastTimer = useRef(0);
   const live = useRef({ paused, menuOpen: false, busy, reduced });
   live.current = { paused, menuOpen: menu !== null, busy, reduced };
@@ -93,6 +95,11 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     if (tryDash(sceneRef.current, ix, iy)) pendingGem.current = false;
   };
   const dashRef = useRef(doDash); dashRef.current = doDash;
+  const doShield = () => {
+    const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
+    tryShield(sceneRef.current);
+  };
+  const shieldRef = useRef(doShield); shieldRef.current = doShield;
 
   // Load the session and the selected Friend's artwork.
   useEffect(() => {
@@ -126,6 +133,9 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced, stick: frozen ? undefined : stickRef.current });
       const pct = Math.round((1 - scene.dashCd / DASH_CD) * 10) / 10;
       if (pct !== dashPctRef.current) { dashPctRef.current = pct; setDashPct(pct); }
+      const spct = Math.round((1 - scene.shieldCd / (SHIELD_TIME + SHIELD_CD)) * 10) / 10;
+      if (spct !== shieldPctRef.current) { shieldPctRef.current = spct; setShieldPct(spct); }
+      if (scene.gems >= 2 !== shieldUnlocked) setShieldUnlocked(scene.gems >= 2);
       const p = scene.player;
       const frame = l.reduced ? 0 : p.walking ? Math.floor(p.anim * 9) % 8 : Math.floor(scene.time * 4) % 8;
       const rows = art ? spriteFrame(art, p.facing, p.walking, frame, p.side).frame.rows : null;
@@ -150,6 +160,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       if (dir) { if (l.paused || l.menuOpen || l.busy || ph !== "play") return; keysRef.current[dir] = true; pendingGem.current = false; e.preventDefault(); return; }
       if ((e.key === " " || e.key === "Shift") && !e.repeat) { e.preventDefault(); dashRef.current(); return; }
       if ((e.key === "e" || e.key === "E") && !e.repeat && !l.paused && !l.menuOpen && !l.busy && nearRef.current) { e.preventDefault(); navRef.current("gem"); }
+      if ((e.key === "q" || e.key === "Q") && !e.repeat) { e.preventDefault(); shieldRef.current(); return; }
     };
     const up = (e: KeyboardEvent) => { const dir = map[e.key]; if (dir) keysRef.current[dir] = false; if (e.key === " ") e.preventDefault(); };
     const hidden = () => { if (document.hidden) clearKeys(); };
@@ -241,8 +252,10 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
         <Joystick onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
         <button type="button" className={`ei-dash${dashPct >= 1 ? " ready" : ""}`} style={{ "--p": dashPct } as CSSProperties} aria-label="Dash (Space or Shift)"
           onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doDash(); }} onClick={e => { if (e.detail === 0) doDash(); }}>Dash</button>
+        {shieldUnlocked && <button type="button" className={`ei-shield${shieldPct >= 1 ? " ready" : ""}`} style={{ "--p": shieldPct } as CSSProperties} aria-label="Shield (Q)"
+          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doShield(); }} onClick={e => { if (e.detail === 0) doShield(); }}>Shield</button>}
       </>}
-      {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · Space or Shift to dash · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Stick or tap to move · Dash to dodge · follow the glow</span></p>}
+      {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · Space or Shift to dash{shieldUnlocked ? " · Q to shield" : ""} · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Stick or tap to move · Dash to dodge{shieldUnlocked ? " · Shield to phase through" : ""} · follow the glow</span></p>}
     </div>
     {phase === "lore" && <Story pages={STORY} doneLabel="Jump!" skippable onDone={beginDrop} />}
     {phase === "epilogue" && <Story pages={EPILOGUE} doneLabel="Stay on the isle" skippable={false} onDone={() => setPhase("play")} />}
