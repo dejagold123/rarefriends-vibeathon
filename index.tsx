@@ -15,6 +15,50 @@ type Menu = "gem" | "log" | "settings" | null;
 type Phase = "lore" | "drop" | "play" | "epilogue" | "victory";
 const rf = (value: bigint) => `${formatGameAmount(value, 18)} RF`;
 
+const MELODY = [261.63, 329.63, 392.00, 440.00, 523.25, 392.00, 659.25, 523.25, 329.63, 392.00, 440.00, 523.25, 659.25, 523.25, 440.00, 392.00];
+const VICTORY_MELODY = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50, 1318.51, 1567.98];
+
+function playSynthesizedSound(ctx: AudioContext | null, type: "dash" | "shield") {
+  if (!ctx || ctx.state === "suspended") return;
+  const now = ctx.currentTime;
+  if (type === "dash") {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(now); osc.stop(now + 0.15);
+  } else if (type === "shield") {
+    for (const freq of [523.25, 659.25, 783.99]) {
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, now);
+      g.gain.setValueAtTime(0.1, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.4);
+    }
+  }
+}
+
+function playBgmStep(ctx: AudioContext | null, step: number, isVictory: boolean) {
+  if (!ctx || ctx.state === "suspended") return;
+  const notes = isVictory ? VICTORY_MELODY : MELODY;
+  const freq = notes[step % notes.length];
+  if (!freq) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.type = isVictory ? "triangle" : "sine";
+  osc.frequency.setValueAtTime(freq, now);
+  g.gain.setValueAtTime(isVictory ? 0.07 : 0.03, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + (isVictory ? 0.35 : 0.45));
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(now); osc.stop(now + (isVictory ? 0.35 : 0.45));
+}
+
+
 const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
 /** Settled burns x price, as a plain number of RF (price is a whole number of RF in game.json). */
 const burnedRF = (snap: GameSnapshot, price: bigint) => Number((BigInt(snap.plays.filter(p => p.outcomeId !== null).length) * price) / 10n ** 16n) / 100;
@@ -87,18 +131,35 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     const key = ++toastKey.current; setToast({ key, title, body });
     window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(t => (t && t.key === key ? null : t)), 3400);
   };
-  const toastRef = useRef(showToast); toastRef.current = showToast;
+  const audioCtx = useRef<AudioContext | null>(null), bgmTimer = useRef(0), bgmStep = useRef(0);
+  const mutedRef = useRef(muted); mutedRef.current = muted;
+
+  const toggleSound = () => {
+    const next = !muted;
+    setMuted(next);
+    sound.current?.setMuted(next);
+    if (!next) {
+      void sound.current?.unlock();
+      if (!audioCtx.current) {
+        audioCtx.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      }
+      if (audioCtx.current.state === "suspended") {
+        void audioCtx.current.resume();
+      }
+    }
+  };
+
   /** Dash in the direction the player is steering (stick or keys), else toward a tapped spot, else the way they face. */
   const doDash = () => {
     const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
     const k = keysRef.current, st = stickRef.current; let ix = (k.right ? 1 : 0) - (k.left ? 1 : 0), iy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
     if (Math.hypot(st.x, st.y) > 0.15) { ix = st.x; iy = st.y; }
-    if (tryDash(sceneRef.current, ix, iy)) pendingGem.current = false;
+    if (tryDash(sceneRef.current, ix, iy)) { pendingGem.current = false; playSynthesizedSound(audioCtx.current, "dash"); }
   };
   const dashRef = useRef(doDash); dashRef.current = doDash;
   const doShield = () => {
     const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
-    tryShield(sceneRef.current);
+    if (tryShield(sceneRef.current)) playSynthesizedSound(audioCtx.current, "shield");
   };
   const shieldRef = useRef(doShield); shieldRef.current = doShield;
 
@@ -132,6 +193,13 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const l = live.current, scene = sceneRef.current, art = spritesRef.current, ph = phaseRef.current;
       const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "epilogue";
       update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced, stick: frozen ? undefined : stickRef.current });
+      bgmTimer.current += dt;
+      if (!mutedRef.current && bgmTimer.current >= 0.32) {
+        bgmTimer.current = 0;
+        bgmStep.current = (bgmStep.current + 1) % 16;
+        playBgmStep(audioCtx.current, bgmStep.current, ph === "victory" || ph === "epilogue");
+      }
+
       const pct = Math.round((1 - scene.dashCd / DASH_CD) * 10) / 10;
       if (pct !== dashPctRef.current) { dashPctRef.current = pct; setDashPct(pct); }
       const spct = Math.round((1 - scene.shieldCd / (SHIELD_TIME + SHIELD_CD)) * 10) / 10;
@@ -255,6 +323,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
           <div>{gem ? <>Find the {gem.name} · <b>{gem.cost} RF</b></> : "Isle Reborn. Journey complete."}</div>
           <div className="ei-bar"><i style={{ width: `${(stage / GEMS.length) * 100}%` }} /></div>
         </div>
+        <button type="button" aria-label={muted ? "Unmute Sound and Music" : "Mute Sound and Music"} onClick={toggleSound}>{muted ? "🔇 Sound Off" : "🔊 Sound On"}</button>
         <button type="button" onClick={() => navigate("log")}>Log</button>
         <button type="button" onClick={() => navigate("settings")}>Settings</button>
       </div>}
@@ -301,7 +370,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
         <p>Wake all {GEMS.length} gems to heal the isle. Gems are found in order.</p>
         <ul>{GEMS.map((g, i) => <li key={g.name} className={i < stage ? "ei-done" : i === stage ? "ei-here" : undefined}>{i < stage ? "✓" : "·"} {g.name} · {g.cost} RF → {STAGES[i + 1].name}<br /><small>{i <= stage ? g.hint : "Wake the previous gem to reveal this one."}</small></li>)}</ul>
       </> : <>
-        <button type="button" aria-pressed={!muted} onClick={() => { const nextMuted = !muted; setMuted(nextMuted); sound.current?.setMuted(nextMuted); if (!nextMuted) void sound.current?.unlock(); }}>{muted ? "Sound off" : "Sound on"}</button>
+        <button type="button" aria-pressed={!muted} onClick={toggleSound}>{muted ? "🔇 Sound & Music Off" : "🔊 Sound & Music On"}</button>
         <label><input type="checkbox" checked={reduced} onChange={e => setReduced(e.target.checked)} /> Reduce motion</label>
         <p>All RF, gems and flares are simulated. Reloading resets this preview. Wallet connection and ownership checks are handled by the FriendSDK runtime.</p>
       </>}

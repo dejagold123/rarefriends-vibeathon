@@ -49,7 +49,8 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | Dash button, or Space / Shift | A quick burst of speed (about 30 px, 1.3 s cooldown). Spirits cannot hit you during the dash |
 | Shield button, or Q | Shield protection (5 s active duration, 5 s cooldown). Unlocks after finding the 2nd gem. Walk through obstacles and spirits unharmed |
 | E, or tap the glowing gem | Wake the gem when you are standing next to it |
-| Log / Settings buttons | Stage list; sound and reduced-motion toggles |
+| 🔊 Sound / Log / Settings buttons | Ambient chiptune BGM & SFX mute toggle; Stage list; sound and reduced-motion toggles |
+
 
 1. Read the short story, then jump: your Friend parachutes from an aircraft onto the ashen isle.
 2. Follow the glowing trail and light beam to the next Heartgem. Gems are found in order.
