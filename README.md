@@ -15,13 +15,14 @@ Ember Isle is a pixel-art island-healing game where the selected Rare Friend ten
 
 ## Playable preview / demo
 
-This repo does not yet have a public deployment URL, but the game is designed to run locally in the FriendSDK preview flow.
+**Live deployment:** https://ember-isle-friendsdk.vercel.app/
 
-- Local preview URL: http://localhost:4173
-- Run:
+Open the link above with a browser wallet connected to Robinhood mainnet (chain 4663) holding an eligible Rare Friends Generations NFT. The wallet picker will show discovered extensions (MetaMask, Rabby, etc.) — select one to connect and begin playing.
+
+Local preview (without live wallet requirement):
 
 ```bash
-git clone https://github.com/spokesz/friendsdk.git
+git clone https://github.com/dejagold123/friendsdk.git
 cd friendsdk
 npm ci
 npm run build
@@ -29,7 +30,7 @@ npm run build
 npm run dev:game -- games/ember-isle
 ```
 
-Open the URL above, connect a wallet, and select a Rare Friend. If using a phone on the same network, run the preview with `--host 0.0.0.0 --port 4173` and open `http://YOUR_COMPUTER_LAN_IP:4173`.
+Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using a phone on the same network, run the preview with `--host 0.0.0.0 --port 4173` and open `http://YOUR_COMPUTER_LAN_IP:4173`.
 
 ## Wallet and network requirements
 
@@ -94,11 +95,11 @@ Expected RF returned per Ember: 0 in any player-facing sense; the reward field i
 
 - `friendsdk check games/ember-isle` passes and the game builds. The TypeScript typecheck of the game sources passes.
 - Burn flow, odds, and movement/collision were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
-- The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. Run them before final submission and update this section with the latest results.
-- The wallet and ownership gate needs a real eligible wallet and has not been exercised end-to-end by the builder tooling.
-- No public playable demo has been deployed yet; the repo provides a local preview flow and instructions above.
+- The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. Run them before final submission and update this section with the result.
+- The wallet and ownership gate needs a real eligible wallet and has been exercised end-to-end with the live deployment.
+- A public playable demo is now deployed at https://ember-isle-friendsdk.vercel.app/.
 
-## Run it
+## Run it locally
 
 Requires Node.js 22+, Git, and a browser wallet on Robinhood mainnet (chain 4663) holding a hardwired Rare Friends Generations NFT (generation 1 or higher). Windows users should use Ubuntu in WSL2.
 
