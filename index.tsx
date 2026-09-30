@@ -33,7 +33,7 @@ function Joystick({ onMove }: { onMove: (x: number, y: number) => void }) {
   };
   const end = () => { active.current = null; if (knob.current) knob.current.style.transform = "translate(0px, 0px)"; onMove(0, 0); };
   return <div ref={base} className="ei-stick" aria-hidden="true"
-    onPointerDown={e => { e.preventDefault(); active.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
+    onPointerDown={e => { e.preventDefault(); e.stopPropagation(); active.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
     onPointerMove={e => { if (active.current === e.pointerId) set(e); }} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     <div ref={knob} className="ei-stick-knob" />
   </div>;
