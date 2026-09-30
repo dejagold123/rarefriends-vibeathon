@@ -1,0 +1,9 @@
+/* Force wallet selection UI to be visible and not auto-connect */
+[data-rf-wallet-list] {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+[data-rf-wallet-auto-connect] {
+  display: none !important;
+}
