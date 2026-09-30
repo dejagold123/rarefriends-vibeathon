@@ -1,50 +1,82 @@
-# Rare Friends Vibeathon
+# Ember Isle
 
-**September 20–30, 2026 · $40,000 advertised prize pool**
+**SDK version:** FriendSDK v0.1.4 · **Category:** Token Activity (with Character Spotlight)
 
-1 prompt. 1 Rare Friend. Build something interesting for Rare Friends: a minigame, virtual pet, idle game, gacha, launchpad, tool, agent, or something new. AI-assisted builds are welcome. One working core interaction is enough.
+Your Rare Friend tends a dying island. Burn simulated $RAREFRIENDS at the Ember Altar and watch the isle heal in six stages, from ash and dead trees to a lush, lantern-lit isle with a phoenix overhead.
 
-## Choose your approach
+## How to play
 
-### Games using FriendSDK
+| Input | Action |
+| --- | --- |
+| WASD / arrow keys | Walk |
+| Tap or click a spot | Walk there |
+| E, or tap the altar | Open the Ember Altar when nearby |
+| Log / Settings buttons | Stage list; sound and reduced-motion toggles |
 
-Use [FriendSDK v0.1.2](https://github.com/spokesz/friendsdk) when its game runtime fits your idea.
+Walk to the altar in the middle of the island, choose how much simulated RF to burn (1, 5, or all), and confirm in the SDK's in-frame prompt. Each burn plays a flare animation and moves the isle toward its next stage.
 
-- **Make your selected Rare Friend part of the experience** and preserve its original character artwork.
-- **Use the SDK's wallet and Friend selection.** Builders and players need a wallet holding a hardwired Generations NFT, generation 1 or higher, on Robinhood mainnet—even for previews.
-- **Keep everything inside the SDK's 960 × 640 viewport.** Your world can be larger: custom cameras, scrolling maps and custom renderers are welcome. Support keyboard and touch, with usable loading, error, mute and reduced-motion controls.
+## Exact rules (all simulated)
 
-Choose your own world, artwork and style. Start with the SDK's starter example and make the main interaction work from beginning to end.
+| Rule | Value |
+| --- | --- |
+| Ember price | 1 RF (`1000000000000000000` base units) |
+| Burn | 1 RF = 1 Ember, consumed permanently. No RF is paid back and nothing is redeemable. |
+| Starting balance | 20 simulated RF, supplied by the SDK preview runtime |
+| Healing | Depends only on total RF burned |
+| Stages | 0 RF Ashen Isle · 1 First Sprouts · 3 Green Returns · 6 Blooming Grove · 10 Waters Return · 15 Night Lights · 20 Isle Reborn |
 
-### Projects without FriendSDK
+Flares are cosmetic. They change the burst colors and sound and never change healing or pay RF.
 
-**FriendSDK is optional.** If your idea needs a different interface or capabilities the SDK does not provide—such as a launchpad, tool or agent—use the stack that fits. Explain how it connects to Rare Friends or $RAREFRIENDS, and demonstrate one working interaction. The SDK's game container and game controls apply to SDK games. Document any wallet or identity requirements your project needs.
+| Flare | Chance (basis points) |
+| --- | --- |
+| Spark | 60% (6,000) |
+| Flame | 30% (3,000) |
+| Blaze | 9% (900) |
+| Phoenix Spark | 1% (100) |
 
-For either approach, **keep purchases and rewards simulated for your MVP, and label them clearly.** Live contracts and real-money transactions are not required to submit. Describe features that need future support or integration.
+Expected RF returned per Ember: **0** in any player-facing sense (see the schema note below).
 
-## How to submit
+## How it uses FriendSDK
 
-Open a pull request in this repository adding `submissions/your-project/README.md` by **September 30, 2026**. Exact cutoff time and timezone: **TBA**.
+- The SDK runtime handles wallet connection, owned Friend selection, the ownership check and confirmations. Game code contains none of that.
+- The selected Friend is drawn in the world using the SDK sprite reader (`createFriendReader`, `spriteFrame`) with the canonical black mask and white halo.
+- **Burning uses the fixed action client:** `buy(n)` spends n simulated RF for n Embers, `play(n)` offers them to the altar, and `settle()` reveals each flare. Both `buy` and `play` show the runtime's in-frame confirmation.
+- The game refuses to burn if `client.mode` is not `"preview"`.
 
-Use the [Fishing example submission](https://github.com/spokesz/rarefriends-vibeathon/pull/1) as a format guide, adapting the game-specific details to your project. Include these details in your submission README and PR description:
+## RF integration and capability gaps
 
-- **Project name, builder name/contact and category.**
-- **One sentence** explaining the project and how it uses Rare Friends or $RAREFRIENDS.
-- **Source repository** with code, assets and clear setup and run instructions. State whether you use FriendSDK and its version, or name your stack.
-- **Playable preview or demo.** Games must include a public playable preview link; web tools and agents must include a working demo link. For CLI tools or background agents without a web interface, include a reproducible demo command and a short recording or example output. State any wallet and network requirements.
-- **How to use it.** Describe controls and game rules, or the steps to try your tool, agent or other project. If applicable, list RF costs, outcome probabilities, rewards and consumable rules. Credit any third-party assets.
-- **Checks and known issues.** For SDK games, run relevant tests, typecheck, game validation and browser checks. For other projects, report checks appropriate to the stack and main interaction. Report failures, limitations and any known risks involving wallets or funds.
+- **RF integration:** RF is the only resource. Burning it is the whole mechanic, and the isle's progress is a visible record of RF burned.
+- **No burn action in SDK v0.1.4.** The bridge only exposes buy, play, settle and redeem, so a burn is modeled as buying and consuming an Ember. In a live version, RF would go to the game's stake instead of being destroyed. A real burn (send to a burn address) would need a new SDK action.
+- **Schema placeholder.** The runtime's definition format requires at least one positive prize. Phoenix Spark carries `reward: "1"` (one base unit, 10⁻¹⁸ RF) only to satisfy that rule. The game never shows, offers or redeems a prize.
+- **No persistence.** Preview ledgers live for the session. Reloading resets the isle and the 20 RF balance.
+- **Simulated only.** No contracts, transactions, signatures or deployments.
 
-Submit early and improve your entry during the event. **You may host public playable previews and working demos on GitHub Pages or another static host. No separate Rare Friends approval is needed for submission previews.** For SDK games, follow the [build and hosting steps](https://github.com/spokesz/friendsdk#build-and-share-a-preview), keeping the ownership gate and simulated economy intact. Official production publication through Rare Friends still requires a separate review.
+## Run it
 
-Need help choosing an approach or submitting? Join [Vibeathon support on Telegram](https://t.me/RFVibeathon).
+Requires Node.js 22+, Git, and a browser wallet on Robinhood mainnet (chain 4663) holding a hardwired Rare Friends Generations NFT (generation 1 or higher). Windows users should use Ubuntu in WSL2.
 
-## Categories and prizes
+```
+git clone https://github.com/spokesz/friendsdk.git
+cd friendsdk
+npm ci
+npm run build
+# copy this folder to games/ember-isle, then:
+npm run dev:game -- games/ember-isle
+```
 
-| Category | What it recognises | 1st | 2nd | 3rd |
-|---|---|---|---|---|
-| Character Spotlight | Best use of a Generations NFT as the main character | $1,000 + 1 Genesis NFT | $500 + 10 Gen-1 NFTs | $250 + 9 Gen-1 NFTs |
-| Token Activity | Most successful at burning or spending $RAREFRIENDS | $1,000 + 1 Genesis NFT | $500 + 10 Gen-1 NFTs | $250 + 9 Gen-1 NFTs |
-| Economy Potential | Best potential for a token economy paired with $RAREFRIENDS | $1,000 + 1 Genesis NFT | $500 + 10 Gen-1 NFTs | $250 + 9 Gen-1 NFTs |
+Open `http://localhost:4173`, connect your wallet, and select your Friend. To play on a phone on the same network, add `--host 0.0.0.0 --port 4173` and open `http://YOUR_COMPUTER_LAN_IP:4173`.
 
-**Details pending:** seven additional paid spots are advertised alongside the $40,000 total pool. Remaining payouts, NFT valuations and how simulated entries are judged for Token Activity are TBA.
+Static build for hosting (for example GitHub Pages): `node scripts/dev-game.mjs build games/ember-isle`, then upload the contents of `games/ember-isle/.friendsdk/`.
+
+## Assets and credits
+
+- **Island, trees, altar, phoenix and effects:** drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
+- **Friend sprites:** read by the SDK from the Rare Friends artwork deployment.
+- **Sounds:** the SDK sound kit, synthesized in code.
+
+## Checks and known issues
+
+- `friendsdk check games/ember-isle` passes and the game builds. The TypeScript typecheck of the game sources passes.
+- Burn flow, odds and movement/collision were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
+- The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. **Run them before submitting** and update this section with the result.
+- The wallet and ownership gate needs a real eligible wallet and has not been exercised end to end by the builder tooling.

@@ -1,0 +1,11 @@
+{
+  "name": "Ember Isle",
+  "consumable": "Ember",
+  "price": "1000000000000000000",
+  "outcomes": [
+    { "name": "Spark", "chanceBps": 6000, "reward": "0" },
+    { "name": "Flame", "chanceBps": 3000, "reward": "0" },
+    { "name": "Blaze", "chanceBps": 900, "reward": "0" },
+    { "name": "Phoenix Spark", "chanceBps": 100, "reward": "1" }
+  ]
+}
