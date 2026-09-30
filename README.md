@@ -49,7 +49,7 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | Dash button, or Space / Shift | A quick burst of speed (about 30 px, 1.3 s cooldown). Spirits cannot hit you during the dash |
 | Shield button, or Q | Shield protection (5 s active duration, 5 s cooldown). Unlocks after finding the 2nd gem. Walk through obstacles and spirits unharmed |
 | E, or tap the glowing gem | Wake the gem when you are standing next to it |
-| 🔊 Sound / Log / Settings buttons | Ambient chiptune BGM & SFX mute toggle; Stage list; sound and reduced-motion toggles |
+| Log / Settings buttons | Stage list; reduced-motion toggle |
 
 1. Read the short story, then jump: your Friend parachutes from an aircraft onto the ashen isle.
 2. Follow the glowing trail and light beam to the next Heartgem. Gems are found in order.
@@ -59,12 +59,11 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 
 ## Key Features & Experience
 
-- **Mobile Landscape Orientation Lock:** Optimized landscape mode layout with an interactive rotation prompt overlay when held in portrait mode on mobile devices.
+- **Automatic Landscape on Phones:** On the first tap, the game asks the browser for fullscreen and a real landscape lock (works on Android Chrome). Where that is not allowed (for example iPhone), the game view rotates itself to landscape when the phone is held upright, with taps and the joystick remapped so controls still point the right way.
 - **Shield Protection System:** Unlocks at Gem 2 (`Q` key or Shield button). Grants 5s invulnerability and terrain obstacle phase-through with a 5s cooldown.
 - **Non-Obstructive Toast Alerts:** Transparent glassmorphic top-right spirit alerts.
 - **Victory Dialogue & Companions:** Summons pixel-art island companions (Isle Guardian, Phoenix Keeper, Spirit Guide) and triggers a victory story sequence upon waking the 7th gem.
 - **Victory End Screen & Replay Button:** Displays journey completion stats (7/7 Gems, 20 RF Spent, Spirit Hits) with a 1-click **Play Again (Replay)** button to restart instantly.
-- **Web Audio Chiptune BGM & SFX:** Ambient island BGM loop, victory fanfare, Dash/Shield sound effects, and a 1-click **`🔊 Sound On`** / **`🔇 Sound Off`** toggle in the top HUD and Settings menu.
 
 
 ## Exact rules (all simulated)
@@ -77,7 +76,7 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | Healing | Depends only on how many gems are woken |
 | Stages | Ashen Isle → First Sprouts → Green Returns → Blooming Grove → Waters Return → Night Lights → Beacon Lit → Isle Reborn (one per gem) |
 
-Flares are cosmetic. They change the burst colors and sound and never change healing or pay RF.
+Flares are cosmetic. They change the burst colors and never change healing or pay RF.
 
 | Flare | Chance (basis points) |
 | --- | --- |
@@ -106,7 +105,6 @@ Expected RF returned per Ember: 0 in any player-facing sense; the reward field i
 
 - Island, trees, altar, gems, ash spirits, aircraft, phoenix, and effects: drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
 - Friend sprites: read by the SDK from the Rare Friends artwork deployment.
-- Sounds: the SDK sound kit, synthesized in code.
 
 ## Checks and known issues
 

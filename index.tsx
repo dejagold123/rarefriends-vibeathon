@@ -6,72 +6,27 @@ import { GameMenu } from "@rarefriends/friendsdk/frame";
 import { formatGameAmount } from "@rarefriends/friendsdk/ui";
 import type { GameSnapshot } from "@rarefriends/friendsdk/game";
 import { createFriendReader, spriteFrame, type GenerationSprites } from "@rarefriends/friendsdk/sprites";
-import { createFriendSoundKit, type FriendSoundKit, type FriendSoundCue } from "@rarefriends/friendsdk/sounds";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
+import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, pointInElement, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, vecInElement, type Scene, type StoryPage } from "./scene.js";
 
 type Menu = "gem" | "log" | "settings" | null;
 type Phase = "lore" | "drop" | "play" | "epilogue" | "victory";
 const rf = (value: bigint) => `${formatGameAmount(value, 18)} RF`;
 
-const MELODY = [261.63, 329.63, 392.00, 440.00, 523.25, 392.00, 659.25, 523.25, 329.63, 392.00, 440.00, 523.25, 659.25, 523.25, 440.00, 392.00];
-const VICTORY_MELODY = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50, 1318.51, 1567.98];
-
-function playSynthesizedSound(ctx: AudioContext | null, type: "dash" | "shield") {
-  if (!ctx || ctx.state === "suspended") return;
-  const now = ctx.currentTime;
-  if (type === "dash") {
-    const osc = ctx.createOscillator(), g = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(320, now);
-    osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
-    g.gain.setValueAtTime(0.12, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    osc.connect(g); g.connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.15);
-  } else if (type === "shield") {
-    for (const freq of [523.25, 659.25, 783.99]) {
-      const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(freq, now);
-      g.gain.setValueAtTime(0.1, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-      osc.connect(g); g.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.4);
-    }
-  }
-}
-
-function playBgmStep(ctx: AudioContext | null, step: number, isVictory: boolean) {
-  if (!ctx || ctx.state === "suspended") return;
-  const notes = isVictory ? VICTORY_MELODY : MELODY;
-  const freq = notes[step % notes.length];
-  if (!freq) return;
-  const now = ctx.currentTime;
-  const osc = ctx.createOscillator(), g = ctx.createGain();
-  osc.type = isVictory ? "triangle" : "sine";
-  osc.frequency.setValueAtTime(freq, now);
-  g.gain.setValueAtTime(isVictory ? 0.07 : 0.03, now);
-  g.gain.exponentialRampToValueAtTime(0.001, now + (isVictory ? 0.35 : 0.45));
-  osc.connect(g); g.connect(ctx.destination);
-  osc.start(now); osc.stop(now + (isVictory ? 0.35 : 0.45));
-}
-
-
 const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
 /** Settled burns x price, as a plain number of RF (price is a whole number of RF in game.json). */
 const burnedRF = (snap: GameSnapshot, price: bigint) => Number((BigInt(snap.plays.filter(p => p.outcomeId !== null).length) * price) / 10n ** 16n) / 100;
-const TIER_CUE: Record<number, FriendSoundCue> = { 1: "purchase", 2: "reveal-common", 3: "reveal-rare", 4: "reveal-legendary" };
 
 /** On-screen analog stick for touch screens. Reports x/y in -1..1. */
-function Joystick({ onMove }: { onMove: (x: number, y: number) => void }) {
+function Joystick({ onMove, rotated }: { onMove: (x: number, y: number) => void; rotated: boolean }) {
   const base = useRef<HTMLDivElement | null>(null), knob = useRef<HTMLDivElement | null>(null), active = useRef<number | null>(null);
   useEffect(() => () => onMove(0, 0), []); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = base.current; if (!el) return;
     const r = el.getBoundingClientRect(), radius = r.width / 2, max = radius * 0.8;
-    let dx = e.clientX - (r.left + radius), dy = e.clientY - (r.top + radius); const d = Math.hypot(dx, dy);
+    const v = vecInElement(e.clientX - (r.left + radius), e.clientY - (r.top + radius), rotated);
+    let dx = v.x, dy = v.y; const d = Math.hypot(dx, dy);
     if (d > max) { dx = (dx / d) * max; dy = (dy / d) * max; }
     if (knob.current) knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
     onMove(dx / max, dy / max);
@@ -110,10 +65,11 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   const [menu, setMenu] = useState<Menu>(null), [busy, setBusy] = useState(false), [phase, setPhaseState] = useState<Phase>("lore");
   const [error, setError] = useState(""), [message, setMessage] = useState("");
   const [toast, setToast] = useState<{ key: number; title: string; body: string } | null>(null);
-  const [muted, setMuted] = useState(true), [reduced, setReduced] = useState(false), [near, setNear] = useState(false), [attempt, setAttempt] = useState(0);
+  const [reduced, setReduced] = useState(false), [near, setNear] = useState(false), [attempt, setAttempt] = useState(0);
+  const [rotated, setRotated] = useState(false), rotRef = useRef(false), landscapeTried = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null), rootRef = useRef<HTMLElement | null>(null);
   const sceneRef = useRef<Scene>(createScene(0)), spritesRef = useRef<GenerationSprites | null>(null), keysRef = useRef<{ left: boolean; right: boolean; up: boolean; down: boolean }>({ left: false, right: false, up: false, down: false });
-  const sound = useRef<FriendSoundKit | null>(null), locked = useRef(false), epoch = useRef(0), nearRef = useRef(false), pendingGem = useRef(false);
+  const locked = useRef(false), epoch = useRef(0), nearRef = useRef(false), pendingGem = useRef(false);
   const phaseRef = useRef<Phase>("lore"), hitsRef = useRef(0), endTimer = useRef(0), stickRef = useRef({ x: 0, y: 0 });
   const [dashPct, setDashPct] = useState(1), dashPctRef = useRef(1);
   const [shieldPct, setShieldPct] = useState(1), shieldPctRef = useRef(1);
@@ -132,43 +88,40 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(t => (t && t.key === key ? null : t)), 3400);
   };
   const toastRef = useRef(showToast); toastRef.current = showToast;
-  const audioCtx = useRef<AudioContext | null>(null), bgmTimer = useRef(0), bgmStep = useRef(0);
-  const mutedRef = useRef(muted); mutedRef.current = muted;
-
-  const toggleSound = () => {
-    const next = !muted;
-    setMuted(next);
-    sound.current?.setMuted(next);
-    if (!next) {
-      void sound.current?.unlock();
-      if (!audioCtx.current) {
-        audioCtx.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      }
-      if (audioCtx.current.state === "suspended") {
-        void audioCtx.current.resume();
-      }
-    }
-  };
-
   /** Dash in the direction the player is steering (stick or keys), else toward a tapped spot, else the way they face. */
   const doDash = () => {
     const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
     const k = keysRef.current, st = stickRef.current; let ix = (k.right ? 1 : 0) - (k.left ? 1 : 0), iy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
     if (Math.hypot(st.x, st.y) > 0.15) { ix = st.x; iy = st.y; }
-    if (tryDash(sceneRef.current, ix, iy)) { pendingGem.current = false; playSynthesizedSound(audioCtx.current, "dash"); }
+    if (tryDash(sceneRef.current, ix, iy)) { pendingGem.current = false; }
   };
   const dashRef = useRef(doDash); dashRef.current = doDash;
   const doShield = () => {
     const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
-    if (tryShield(sceneRef.current)) playSynthesizedSound(audioCtx.current, "shield");
+    tryShield(sceneRef.current);
   };
   const shieldRef = useRef(doShield); shieldRef.current = doShield;
+
+  // Phones held upright: the game rotates itself to landscape. (If the browser grants a real orientation lock, this stops matching.)
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse) and (orientation: portrait) and (max-width: 768px)");
+    const sync = () => { rotRef.current = mq.matches; setRotated(mq.matches); };
+    sync(); mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  /** On the first touch-release, ask the browser for fullscreen + a real landscape lock. Quietly does nothing where unsupported (e.g. iPhone). */
+  const tryLandscape = () => {
+    if (landscapeTried.current || !window.matchMedia("(pointer: coarse)").matches) return;
+    landscapeTried.current = true;
+    const orientation = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
+    const lock = () => { try { void orientation?.lock?.("landscape")?.catch(() => undefined); } catch { /* unsupported */ } };
+    try { const p = rootRef.current?.requestFullscreen?.(); if (p) void p.then(lock, lock); else lock(); } catch { lock(); }
+  };
 
   // Load the session and the selected Friend's artwork.
   useEffect(() => {
     const version = ++epoch.current;
-    sound.current = createFriendSoundKit({ muted: true });
-    setSnapshot(null); setSprites(null); spritesRef.current = null; setMenu(null); setError(""); setMessage(""); setBusy(false); setMuted(true); setToast(null);
+    setSnapshot(null); setSprites(null); spritesRef.current = null; setMenu(null); setError(""); setMessage(""); setBusy(false); setToast(null);
     locked.current = false; pendingGem.current = false; hitsRef.current = 0; clearKeys(); sceneRef.current = createScene(0);
     window.clearTimeout(endTimer.current);
     void Promise.all([client.read(), createFriendReader().read(friendId)]).then(([snap, art]) => {
@@ -179,7 +132,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     }).catch(cause => { if (version === epoch.current) setError(cause instanceof Error ? cause.message : "Could not load the isle."); });
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setReduced(preference.matches); sync(); preference.addEventListener("change", sync);
-    return () => { epoch.current++; window.clearTimeout(toastTimer.current); window.clearTimeout(endTimer.current); sound.current?.dispose(); sound.current = null; preference.removeEventListener("change", sync); };
+    return () => { epoch.current++; window.clearTimeout(toastTimer.current); window.clearTimeout(endTimer.current); preference.removeEventListener("change", sync); };
   }, [client, friendId, attempt]);
 
   // Animation loop.
@@ -194,13 +147,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const l = live.current, scene = sceneRef.current, art = spritesRef.current, ph = phaseRef.current;
       const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "epilogue";
       update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced, stick: frozen ? undefined : stickRef.current });
-      bgmTimer.current += dt;
-      if (!mutedRef.current && bgmTimer.current >= 0.32) {
-        bgmTimer.current = 0;
-        bgmStep.current = (bgmStep.current + 1) % 16;
-        playBgmStep(audioCtx.current, bgmStep.current, ph === "victory" || ph === "epilogue");
-      }
-
       const pct = Math.round((1 - scene.dashCd / DASH_CD) * 10) / 10;
       if (pct !== dashPctRef.current) { dashPctRef.current = pct; setDashPct(pct); }
       const spct = Math.round((1 - scene.shieldCd / (SHIELD_TIME + SHIELD_CD)) * 10) / 10;
@@ -211,7 +157,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const rows = art ? spriteFrame(art, p.facing, p.walking, frame, p.side).frame.rows : null;
       draw(ctx, scene, rows, l.reduced);
       if (ph === "drop" && !scene.drop) { setPhase("play"); toastRef.current("Touchdown!", `Find the ${GEMS[scene.gems]?.name ?? "gem"}. Follow the glowing trail.`); }
-      if (scene.hits !== hitsRef.current) { hitsRef.current = scene.hits; toastRef.current("Ash spirit!", "You are stunned. Dodge the spirits and try again."); sound.current?.play("impact"); }
+      if (scene.hits !== hitsRef.current) { hitsRef.current = scene.hits; toastRef.current("Ash spirit!", "You are stunned. Dodge the spirits and try again."); }
       const isNear = ph === "play" && isNearGem(scene);
       if (isNear !== nearRef.current) { nearRef.current = isNear; setNear(isNear); }
       if (pendingGem.current && !frozen && isNear && !scene.target) { pendingGem.current = false; navRef.current("gem"); }
@@ -243,7 +189,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     if (l.paused || l.menuOpen || l.busy) return;
     if (phaseRef.current === "drop") { skipDrop(scene); return; }
     if (phaseRef.current !== "play") return;
-    const rect = e.currentTarget.getBoundingClientRect(), x = ((e.clientX - rect.left) / rect.width) * W, y = ((e.clientY - rect.top) / rect.height) * H, g = currentGem(scene);
+    const rect = e.currentTarget.getBoundingClientRect(), u = pointInElement(rect, e.clientX, e.clientY, rotRef.current), x = u.nx * W, y = u.ny * H, g = currentGem(scene);
     if (g && Math.hypot(x - g.x, y - (g.y - 8)) < 12) {
       if (isNearGem(scene)) navigate("gem"); else { scene.target = { x: g.x, y: g.y }; pendingGem.current = true; }
       return;
@@ -252,7 +198,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   };
 
   const beginDrop = () => {
-    void sound.current?.unlock();
     startDrop(sceneRef.current);
     if (live.current.reduced) skipDrop(sceneRef.current);
     setPhase("drop");
@@ -263,7 +208,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     const scene = sceneRef.current, gem = currentGem(scene);
     if (!gem || locked.current || live.current.paused) return;
     if (client.mode !== "preview") { setError("Ember Isle is simulated-only in FriendSDK v0.1."); return; }
-    const count = gem.cost, version = epoch.current; locked.current = true; setBusy(true); setError(""); setMessage(""); void sound.current?.unlock();
+    const count = gem.cost, version = epoch.current; locked.current = true; setBusy(true); setError(""); setMessage("");
     try {
       const before = await client.read(), stageBefore = stageIndex(burnedRF(before, price));
       if (stageBefore !== scene.gems) throw new Error("The isle is out of sync. Reload the preview.");
@@ -283,7 +228,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const gemsAfter = stageIndex(burnedRF(after, price)), best = flares.length ? Math.max(...flares) : 1;
       if (gemsAfter > scene.gems) {
         while (scene.gems < gemsAfter) unlockGem(scene, best, live.current.reduced);
-        sound.current?.play(TIER_CUE[best] ?? "purchase"); sound.current?.play("impact");
         showToast(`Gem ${gemsAfter} of ${GEMS.length}: ${gem.name}`, `${STAGES[gemsAfter].name}. ${STAGES[gemsAfter].line}`);
         if (gemsAfter >= GEMS.length) endTimer.current = window.setTimeout(() => { if (version === epoch.current) setPhase("epilogue"); }, live.current.reduced ? 800 : 3000);
       } else showToast("The gem stays dark", "Something went wrong. Try again.");
@@ -310,12 +254,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     setPhase("lore");
   };
 
-  return <section ref={rootRef} tabIndex={-1} className="ei-game" aria-label="Ember Isle" aria-busy={busy}>
-    <div className="ei-orientation-overlay" role="alert">
-      <div className="ei-orientation-icon">📱🔄</div>
-      <h3>Rotate Your Device</h3>
-      <p>Please rotate your phone to landscape mode for the best Ember Isle experience.</p>
-    </div>
+  return <section ref={rootRef} tabIndex={-1} className={rotated ? "ei-game ei-rot" : "ei-game"} aria-label="Ember Isle" aria-busy={busy} onPointerUpCapture={tryLandscape}>
     <div className="ei-stage" inert={Boolean(menu) || paused || storyOpen || undefined}>
       <canvas ref={canvasRef} className="ei-canvas" width={W} height={H} role="img" aria-label={`Pixel-art island, ${STAGES[stage].name}`} onPointerDown={onPointerDown} />
       {phase !== "lore" && <div className="ei-hud">
@@ -324,7 +263,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
           <div>{gem ? <>Find the {gem.name} · <b>{gem.cost} RF</b></> : "Isle Reborn. Journey complete."}</div>
           <div className="ei-bar"><i style={{ width: `${(stage / GEMS.length) * 100}%` }} /></div>
         </div>
-        <button type="button" aria-label={muted ? "Unmute Sound and Music" : "Mute Sound and Music"} onClick={toggleSound}>{muted ? "🔇 Sound Off" : "🔊 Sound On"}</button>
         <button type="button" onClick={() => navigate("log")}>Log</button>
         <button type="button" onClick={() => navigate("settings")}>Settings</button>
       </div>}
@@ -332,7 +270,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       {interactive && near && gem && <div className="ei-prompt"><button type="button" className="ei-primary" onClick={() => navigate("gem")}>Wake the {gem.name} · {gem.cost} RF (E)</button></div>}
       {phase === "drop" && <p className="ei-hint">Tap to skip</p>}
       {interactive && <>
-        <Joystick onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
+        <Joystick rotated={rotated} onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
         <button type="button" className={`ei-dash${dashPct >= 1 ? " ready" : ""}`} style={{ "--p": dashPct } as CSSProperties} aria-label="Dash (Space or Shift)"
           onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doDash(); }} onClick={e => { if (e.detail === 0) doDash(); }}>Dash</button>
         {shieldUnlocked && <button type="button" className={`ei-shield${shieldPct >= 1 ? " ready" : ""}`} style={{ "--p": shieldPct } as CSSProperties} aria-label="Shield (Q)"
@@ -371,7 +309,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
         <p>Wake all {GEMS.length} gems to heal the isle. Gems are found in order.</p>
         <ul>{GEMS.map((g, i) => <li key={g.name} className={i < stage ? "ei-done" : i === stage ? "ei-here" : undefined}>{i < stage ? "✓" : "·"} {g.name} · {g.cost} RF → {STAGES[i + 1].name}<br /><small>{i <= stage ? g.hint : "Wake the previous gem to reveal this one."}</small></li>)}</ul>
       </> : <>
-        <button type="button" aria-pressed={!muted} onClick={toggleSound}>{muted ? "🔇 Sound & Music Off" : "🔊 Sound & Music On"}</button>
         <label><input type="checkbox" checked={reduced} onChange={e => setReduced(e.target.checked)} /> Reduce motion</label>
         <p>All RF, gems and flares are simulated. Reloading resets this preview. Wallet connection and ownership checks are handled by the FriendSDK runtime.</p>
       </>}
