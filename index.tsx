@@ -131,6 +131,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     const key = ++toastKey.current; setToast({ key, title, body });
     window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(t => (t && t.key === key ? null : t)), 3400);
   };
+  const toastRef = useRef(showToast); toastRef.current = showToast;
   const audioCtx = useRef<AudioContext | null>(null), bgmTimer = useRef(0), bgmStep = useRef(0);
   const mutedRef = useRef(muted); mutedRef.current = muted;
 
