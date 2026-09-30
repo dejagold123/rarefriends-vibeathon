@@ -1,10 +1,44 @@
 # Ember Isle
 
-**SDK version:** FriendSDK v0.1.4 · **Category:** Token Activity (with Character Spotlight)
+- Project name: Ember Isle
+- Builder: Anthony / @dejagold123
+- Category: Token Activity (with Character Spotlight)
 
-Your Rare Friend tends a dying island. Burn simulated $RAREFRIENDS at the Ember Altar and watch the isle heal in six stages, from ash and dead trees to a lush, lantern-lit isle with a phoenix overhead.
+Ember Isle is a pixel-art island-healing game where the selected Rare Friend tends a dying island and players burn simulated $RAREFRIENDS at the altar to restore it over time.
 
-## How to play
+## Source repository and stack
+
+- Source repository: https://github.com/dejagold123/rarefriends-vibeathon
+- Stack: FriendSDK v0.1.4 (preview/runtime-based game)
+- Code and assets: all gameplay logic, drawing code, and styling are included in this repository root (`game.json`, `scene.ts`, `index.tsx`, `style.css`, and `README.md`)
+- Setup and run instructions are included below
+
+## Playable preview / demo
+
+This repo does not yet have a public deployment URL, but the game is designed to run locally in the FriendSDK preview flow.
+
+- Local preview URL: http://localhost:4173
+- Run:
+
+```bash
+git clone https://github.com/spokesz/friendsdk.git
+cd friendsdk
+npm ci
+npm run build
+# copy this folder to games/ember-isle, then:
+npm run dev:game -- games/ember-isle
+```
+
+Open the URL above, connect a wallet, and select a Rare Friend. If using a phone on the same network, run the preview with `--host 0.0.0.0 --port 4173` and open `http://YOUR_COMPUTER_LAN_IP:4173`.
+
+## Wallet and network requirements
+
+- Wallet: browser wallet on Robinhood mainnet (chain 4663)
+- Requirement: eligible Rare Friends Generations NFT (generation 1 or higher) in the connected wallet
+- Network: Robinhood mainnet / chain 4663
+- This is a simulated preview-only game; no actual RF is transferred or redeemed in the gameplay flow
+
+## How to use it
 
 | Input | Action |
 | --- | --- |
@@ -34,28 +68,41 @@ Flares are cosmetic. They change the burst colors and sound and never change hea
 | Blaze | 9% (900) |
 | Phoenix Spark | 1% (100) |
 
-Expected RF returned per Ember: **0** in any player-facing sense (see the schema note below).
+Expected RF returned per Ember: 0 in any player-facing sense; the reward field is only a schema placeholder required by the SDK definition format.
 
-## How it uses FriendSDK
+## How it uses Rare Friends / $RAREFRIENDS
 
-- The SDK runtime handles wallet connection, owned Friend selection, the ownership check and confirmations. Game code contains none of that.
-- The selected Friend is drawn in the world using the SDK sprite reader (`createFriendReader`, `spriteFrame`) with the canonical black mask and white halo.
-- **Burning uses the fixed action client:** `buy(n)` spends n simulated RF for n Embers, `play(n)` offers them to the altar, and `settle()` reveals each flare. Both `buy` and `play` show the runtime's in-frame confirmation.
-- The game refuses to burn if `client.mode` is not `"preview"`.
+- The game reads the selected Friend and renders it in the world using the Rare Friends sprite system.
+- The gameplay loop is driven by simulated $RAREFRIENDS burned at the altar, which causes the island to heal over time.
+- The system uses FriendSDK preview runtime actions (`buy`, `play`, `settle`) to simulate those burns without real token transfer or redemption.
 
 ## RF integration and capability gaps
 
-- **RF integration:** RF is the only resource. Burning it is the whole mechanic, and the isle's progress is a visible record of RF burned.
-- **No burn action in SDK v0.1.4.** The bridge only exposes buy, play, settle and redeem, so a burn is modeled as buying and consuming an Ember. In a live version, RF would go to the game's stake instead of being destroyed. A real burn (send to a burn address) would need a new SDK action.
-- **Schema placeholder.** The runtime's definition format requires at least one positive prize. Phoenix Spark carries `reward: "1"` (one base unit, 10⁻¹⁸ RF) only to satisfy that rule. The game never shows, offers or redeems a prize.
-- **No persistence.** Preview ledgers live for the session. Reloading resets the isle and the 20 RF balance.
-- **Simulated only.** No contracts, transactions, signatures or deployments.
+- RF integration: RF is the only resource. Burning it is the whole mechanic, and the island's progress is a visible record of RF burned.
+- No burn action in SDK v0.1.4: the bridge exposes buy, play, settle and redeem, so a burn is modeled as buying and consuming an Ember. A real burn would require a new SDK action or burn-address flow.
+- Schema placeholder: Phoenix Spark carries `reward: "1"` (one base unit, 10^-18 RF) only to satisfy the runtime definition format. The game never shows, offers, or redeems a prize.
+- No persistence: preview ledgers live for the session. Reloading resets the island and the 20 RF balance.
+- Simulated only: no contracts, transactions, signatures, or deployments are performed in the game logic.
+
+## Assets and credits
+
+- Island, trees, altar, phoenix, and effects: drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
+- Friend sprites: read by the SDK from the Rare Friends artwork deployment.
+- Sounds: the SDK sound kit, synthesized in code.
+
+## Checks and known issues
+
+- `friendsdk check games/ember-isle` passes and the game builds. The TypeScript typecheck of the game sources passes.
+- Burn flow, odds, and movement/collision were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
+- The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. Run them before final submission and update this section with the latest results.
+- The wallet and ownership gate needs a real eligible wallet and has not been exercised end-to-end by the builder tooling.
+- No public playable demo has been deployed yet; the repo provides a local preview flow and instructions above.
 
 ## Run it
 
 Requires Node.js 22+, Git, and a browser wallet on Robinhood mainnet (chain 4663) holding a hardwired Rare Friends Generations NFT (generation 1 or higher). Windows users should use Ubuntu in WSL2.
 
-```
+```bash
 git clone https://github.com/spokesz/friendsdk.git
 cd friendsdk
 npm ci
@@ -64,19 +111,11 @@ npm run build
 npm run dev:game -- games/ember-isle
 ```
 
-Open `http://localhost:4173`, connect your wallet, and select your Friend. To play on a phone on the same network, add `--host 0.0.0.0 --port 4173` and open `http://YOUR_COMPUTER_LAN_IP:4173`.
-
 Static build for hosting (for example GitHub Pages): `node scripts/dev-game.mjs build games/ember-isle`, then upload the contents of `games/ember-isle/.friendsdk/`.
 
-## Assets and credits
+## How it uses FriendSDK
 
-- **Island, trees, altar, phoenix and effects:** drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
-- **Friend sprites:** read by the SDK from the Rare Friends artwork deployment.
-- **Sounds:** the SDK sound kit, synthesized in code.
-
-## Checks and known issues
-
-- `friendsdk check games/ember-isle` passes and the game builds. The TypeScript typecheck of the game sources passes.
-- Burn flow, odds and movement/collision were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
-- The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. **Run them before submitting** and update this section with the result.
-- The wallet and ownership gate needs a real eligible wallet and has not been exercised end to end by the builder tooling.
+- The SDK runtime handles wallet connection, owned Friend selection, the ownership check, and confirmations. Game code contains none of that.
+- The selected Friend is drawn in the world using the SDK sprite reader (`createFriendReader`, `spriteFrame`) with the canonical black mask and white halo.
+- Burning uses the fixed action client: `buy(n)` spends n simulated RF for n Embers, `play(n)` offers them to the altar, and `settle()` reveals each flare. Both `buy` and `play` show the runtime's in-frame confirmation.
+- The game refuses to burn if `client.mode` is not `"preview"`.
