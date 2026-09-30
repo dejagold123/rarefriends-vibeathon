@@ -1,40 +1,58 @@
 /**
  * Ember Isle scene: a 240 x 160 pixel-art island drawn on a canvas and scaled up 4x.
  * Pure drawing + movement code. It has no wallet, network or SDK-economy logic; index.tsx wires those in.
- * Healing is driven entirely by `burned` (simulated RF burned so far).
+ * The player hunts 7 Heartgems, dodging ash spirits. Waking a gem costs simulated RF and heals the isle one stage.
+ * Healing is driven by `gems` (gems woken); `burned` is a virtual value that drives the art.
  */
 export const W = 240;
 export const H = 160;
 export const FULL_RF = 20;
 export const CX = 120, CY = 92, RX = 100, RY = 54;
 export const ALTAR = { x: 120, y: 80 };
-export const REACH = 28;
+export const GEM_REACH = 16;
 export const SPAWN = { x: 120, y: 106 };
 
 export type Facing = "down" | "up" | "left" | "right";
 export type Stage = Readonly<{ at: number; name: string; line: string }>;
+export type Gem = Readonly<{ name: string; cost: number; x: number; y: number; color: string; light: string; hint: string }>;
 
+/** Seven Heartgems, found in order. Costs are simulated RF and add up to FULL_RF. */
+export const GEMS: readonly Gem[] = [
+  { name: "Cinder Ruby", cost: 1, x: 150, y: 108, color: "#e0402a", light: "#ff9a7a", hint: "A red spark glows in the ash, just east of where you landed." },
+  { name: "Sprout Emerald", cost: 2, x: 84, y: 88, color: "#2fbf5a", light: "#9dffb0", hint: "Green light pulses west of the altar." },
+  { name: "Bloom Quartz", cost: 2, x: 176, y: 92, color: "#e85aa0", light: "#ffc2e0", hint: "Something pink glints among the dead trees on the east side." },
+  { name: "Tide Sapphire", cost: 3, x: 120, y: 134, color: "#2f8fe0", light: "#a8dcff", hint: "The south shore hums with water-light." },
+  { name: "Lantern Topaz", cost: 3, x: 196, y: 116, color: "#e8b020", light: "#fff0a0", hint: "Golden light flickers on the far south-east cliff." },
+  { name: "Sky Amethyst", cost: 4, x: 46, y: 64, color: "#9060e0", light: "#d8c0ff", hint: "Violet light on the north-west ridge. The spirits are thick out there." },
+  { name: "Phoenix Heart", cost: 5, x: 120, y: 62, color: "#ff7a1a", light: "#fff2c0", hint: "The last gem burns just behind the altar. Nearly home." },
+];
+
+/** Stage n is reached once n gems are woken. `at` is the cumulative RF spent. */
 export const STAGES: readonly Stage[] = [
   { at: 0, name: "Ashen Isle", line: "Nothing grows. One coal still glows." },
   { at: 1, name: "First Sprouts", line: "Green specks push through the ash." },
   { at: 3, name: "Green Returns", line: "Grass spreads and the stumps wake." },
-  { at: 6, name: "Blooming Grove", line: "Trees leaf out and flowers open." },
-  { at: 10, name: "Waters Return", line: "The dry pond fills and the sea clears." },
-  { at: 15, name: "Night Lights", line: "Lanterns glow. Fireflies and birds return." },
+  { at: 5, name: "Blooming Grove", line: "Trees leaf out and flowers open." },
+  { at: 8, name: "Waters Return", line: "The dry pond fills and the sea clears." },
+  { at: 11, name: "Night Lights", line: "Lanterns glow. Fireflies and birds return." },
+  { at: 15, name: "Beacon Lit", line: "The altar flame roars and the sky clears." },
   { at: 20, name: "Isle Reborn", line: "A phoenix circles the altar." },
 ];
+/** Virtual burn value the art uses for each stage (the art was built around 0/1/3/6/10/15/18/20). */
+const VIRTUAL = [0, 1, 3, 6, 10, 15, 18, 20];
 
 export function stageIndex(burned: number): number {
   let index = 0;
-  for (let i = 0; i < STAGES.length; i++) if (burned >= STAGES[i].at) index = i;
+  for (let i = 1; i < STAGES.length; i++) if (burned >= STAGES[i].at) index = i;
   return index;
 }
 
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; c: string; s: number };
+export type Spirit = { x: number; y: number; wx: number; wy: number; ph: number; fade: number; cool: number };
 export type Scene = {
   time: number;
-  burned: number;        // eased value used for drawing
-  burnedTarget: number;  // real value from settled burns
+  burned: number;        // eased virtual value used for drawing
+  burnedTarget: number;  // where `burned` is heading
   burstGlow: number;
   flash: number;
   flashColor: string;
@@ -43,13 +61,25 @@ export type Scene = {
   spawnAcc: number;
   target: { x: number; y: number } | null;
   stuck: number;
+  detour: 1 | -1;
   player: { x: number; y: number; facing: Facing; side: "left" | "right"; walking: boolean; anim: number };
+  gems: number;          // gems woken so far
+  spirits: Spirit[];
+  stun: number;
+  invuln: number;
+  hits: number;          // total spirit hits, so the UI can react
+  drop: { t: number } | null;
+  fly: { t: number; i: number } | null;
 };
 export type Keys = Readonly<{ left: boolean; right: boolean; up: boolean; down: boolean }>;
 
-export function createScene(burned = 0): Scene {
-  return { time: 0, burned, burnedTarget: burned, burstGlow: 0, flash: 0, flashColor: "#ffd9a0", ring: null, particles: [], spawnAcc: 0,
-    target: null, stuck: 0, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 } };
+export function createScene(gems = 0): Scene {
+  const v = VIRTUAL[gems] ?? FULL_RF;
+  const s: Scene = { time: 0, burned: v, burnedTarget: v, burstGlow: 0, flash: 0, flashColor: "#ffd9a0", ring: null, particles: [], spawnAcc: 0,
+    target: null, stuck: 0, detour: 1, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 },
+    gems, spirits: [], stun: 0, invuln: 0, hits: 0, drop: null, fly: null };
+  spawnSpirits(s);
+  return s;
 }
 
 /* ---------- deterministic layout ---------- */
@@ -80,7 +110,8 @@ export function canStand(x: number, y: number, burned: number): boolean {
   if (burned >= 10 && ((x - POND.x) / (POND.rx + 2)) ** 2 + ((y - POND.y) / (POND.ry + 2)) ** 2 < 1) return false;
   return true;
 }
-export const isNearAltar = (s: Scene) => Math.hypot(s.player.x - ALTAR.x, s.player.y - (ALTAR.y + 4)) < REACH;
+export const currentGem = (s: Scene): Gem | null => (s.gems < GEMS.length ? GEMS[s.gems] : null);
+export const isNearGem = (s: Scene) => { const g = currentGem(s); return !!g && !s.drop && Math.hypot(s.player.x - g.x, (s.player.y - g.y) * 1.2) < GEM_REACH; };
 
 function nearestStandable(x: number, y: number, burned: number): { x: number; y: number } {
   for (let r = 2; r < 60; r += 2) for (let a = 0; a < 6.28; a += 0.4) {
@@ -90,13 +121,99 @@ function nearestStandable(x: number, y: number, burned: number): { x: number; y:
   return { x: SPAWN.x, y: SPAWN.y };
 }
 
+/* ---------- ash spirits ---------- */
+const SPIRIT_COUNT = [1, 1, 2, 2, 3, 4, 5];
+const spiritSpeed = (g: number) => 11 + g * 3.2;
+const spiritChase = (g: number) => (g >= 2 ? 30 + g * 4 : 0);
+
+function pickWaypoint(s: Scene, sp: Spirit, g: Gem) {
+  for (let i = 0; i < 12; i++) {
+    const t = 0.15 + Math.random() * 0.8;
+    const wx = s.player.x + (g.x - s.player.x) * t + (Math.random() - 0.5) * 50, wy = s.player.y + (g.y - s.player.y) * t + (Math.random() - 0.5) * 34;
+    if (inIsland(wx, wy, 6) && Math.hypot(wx - g.x, wy - g.y) > 12) { sp.wx = wx; sp.wy = wy; return; }
+  }
+  sp.wx = sp.x; sp.wy = sp.y;
+}
+
+/** Spirits haunt the route between the player and the current gem. */
+export function spawnSpirits(s: Scene) {
+  s.spirits = [];
+  const g = currentGem(s);
+  if (!g) return;
+  const n = SPIRIT_COUNT[s.gems] ?? 5;
+  for (let guard = 0; s.spirits.length < n && guard < 300; guard++) {
+    const t = 0.25 + Math.random() * 0.6;
+    const x = s.player.x + (g.x - s.player.x) * t + (Math.random() - 0.5) * 44, y = s.player.y + (g.y - s.player.y) * t + (Math.random() - 0.5) * 30;
+    if (!inIsland(x, y, 6) || Math.hypot(x - s.player.x, y - s.player.y) < 30 || Math.hypot(x - g.x, y - g.y) < 14) continue;
+    s.spirits.push({ x, y, wx: x, wy: y, ph: Math.random() * 6.28, fade: 0, cool: 0 });
+  }
+}
+
+function hitPlayer(s: Scene, sp: Spirit, reduced: boolean) {
+  const p = s.player;
+  let ax = p.x - sp.x, ay = p.y - sp.y; const d = Math.hypot(ax, ay);
+  if (d < 0.01) { ax = 0; ay = 1; } else { ax /= d; ay /= d; }
+  for (let k = 20; k >= 4; k -= 4) { const nx = p.x + ax * k, ny = p.y + ay * k; if (canStand(nx, ny, s.burned)) { p.x = nx; p.y = ny; break; } }
+  s.stun = 0.8; s.invuln = 1.8; s.hits++; s.target = null; sp.cool = 3;
+  const g = currentGem(s); if (g) pickWaypoint(s, sp, g);
+  if (!reduced) {
+    s.flash = Math.max(s.flash, 0.3); s.flashColor = "#8a8fa8";
+    for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2; s.particles.push({ x: p.x, y: p.y - 8, vx: Math.cos(a) * 30, vy: Math.sin(a) * 20, life: 0, max: 0.5, c: i % 2 ? "#8b8299" : "#ffb347", s: 1 }); }
+  }
+}
+
+function updateSpirits(s: Scene, dt: number, reduced: boolean) {
+  const g = currentGem(s), p = s.player;
+  for (const sp of s.spirits) {
+    sp.fade = Math.min(1, sp.fade + dt * 1.5); sp.cool = Math.max(0, sp.cool - dt);
+    if (!g) continue;
+    let tx = sp.wx, ty = sp.wy, speed = spiritSpeed(s.gems) * (reduced ? 0.7 : 1);
+    if (sp.cool <= 0 && s.invuln <= 0 && Math.hypot(p.x - sp.x, p.y - sp.y) < spiritChase(s.gems)) { tx = p.x; ty = p.y; speed *= 1.5; }
+    const dx = tx - sp.x, dy = ty - sp.y, d = Math.hypot(dx, dy);
+    if (d < 2) pickWaypoint(s, sp, g); else { sp.x += (dx / d) * speed * dt; sp.y += (dy / d) * speed * dt; }
+    if (s.invuln <= 0 && sp.fade > 0.8 && Math.hypot(p.x - sp.x, (p.y - sp.y) * 1.3) < 7) hitPlayer(s, sp, reduced);
+  }
+}
+
+/* ---------- aircraft drop-in ---------- */
+export const DROP_DUR = 3.8, DROP_RELEASE = 1.2, DROP_LAND = 3.0, PLANE_Y = 24;
+function dropInfo(t: number) {
+  const planeX = t < DROP_RELEASE ? -24 + (t / DROP_RELEASE) * (SPAWN.x + 24) : SPAWN.x + ((t - DROP_RELEASE) / (DROP_DUR - DROP_RELEASE)) * (W + 40 - SPAWN.x);
+  const raw = (t - DROP_RELEASE) / (DROP_LAND - DROP_RELEASE);
+  return { planeX, k: t < DROP_RELEASE ? -1 : 1 - (1 - Math.min(1, raw)) ** 1.6 };
+}
+export function startDrop(s: Scene) { s.drop = { t: 0 }; s.player.x = SPAWN.x; s.player.y = SPAWN.y; s.player.facing = "down"; s.spirits = []; s.target = null; }
+export function endDrop(s: Scene, reduced = false) {
+  if (!s.drop) return;
+  s.drop = null;
+  if (!reduced) for (let i = 0; i < 16; i++) { const a = Math.random() * Math.PI * 2; s.particles.push({ x: s.player.x, y: s.player.y, vx: Math.cos(a) * 22, vy: Math.sin(a) * 8 - 4, life: 0, max: 0.6 + Math.random() * 0.4, c: i % 2 ? "#c9b98a" : "#8a7a5a", s: 2 }); }
+  spawnSpirits(s);
+}
+
+export const skipDrop = (s: Scene) => endDrop(s, false);
+
+/* ---------- waking a gem ---------- */
+function flyPos(i: number, k: number) {
+  const g = GEMS[i];
+  return { x: g.x + (ALTAR.x - g.x) * k, y: g.y - 10 + (ALTAR.y - 22 - (g.y - 10)) * k - Math.sin(k * Math.PI) * 24 };
+}
+/** Call once per successfully paid gem. The gem flies to the altar, then the isle heals a stage. */
+export function unlockGem(s: Scene, tier: number, reduced: boolean) {
+  const i = s.gems, g = GEMS[i];
+  if (!g) return;
+  s.gems = i + 1; s.spirits = [];
+  burst(s, g.cost, tier, reduced, { x: g.x, y: g.y - 10 });
+  if (reduced) { s.fly = null; s.burnedTarget = s.burned = VIRTUAL[s.gems] ?? FULL_RF; } else s.fly = { t: 0, i };
+  spawnSpirits(s);
+}
+
 /* ---------- update ---------- */
 const TIER_COLORS: Record<number, string[]> = {
   1: ["#ff9a4a", "#ff6a2a"], 2: ["#ff8a3a", "#ff5a1a", "#ffd07a"],
   3: ["#ffe27a", "#ffb020", "#ffffff"], 4: ["#fff2a8", "#ffd23a", "#ff9ad5", "#ffffff"],
 };
 
-export function burst(s: Scene, embers: number, tier: number, reduced: boolean) {
+export function burst(s: Scene, embers: number, tier: number, reduced: boolean, at = { x: ALTAR.x, y: ALTAR.y - 20 }) {
   const colors = TIER_COLORS[Math.min(4, Math.max(1, tier))];
   s.burstGlow = Math.min(1.5, s.burstGlow + 0.5 + tier * 0.25);
   if (reduced) return;
@@ -106,7 +223,7 @@ export function burst(s: Scene, embers: number, tier: number, reduced: boolean) 
   const count = Math.min(70, embers * 8 + tier * 10);
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2, sp = 18 + Math.random() * 55;
-    s.particles.push({ x: ALTAR.x, y: ALTAR.y - 20, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 26, life: 0, max: 0.9 + Math.random() * 0.9,
+    s.particles.push({ x: at.x, y: at.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 26, life: 0, max: 0.9 + Math.random() * 0.9,
       c: colors[i % colors.length], s: Math.random() < 0.25 ? 2 : 1 });
   }
 }
@@ -121,9 +238,25 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
   if (s.ring) { s.ring.t += dt; if (s.ring.t > 0.9) s.ring = null; }
 
   const p = s.player;
+  s.invuln = Math.max(0, s.invuln - dt); s.stun = Math.max(0, s.stun - dt);
+  if (s.drop && !o.frozen) {
+    s.drop.t += dt;
+    const di = dropInfo(s.drop.t);
+    if (!o.reduced && di.planeX < W + 20 && Math.random() < 0.7) s.particles.push({ x: di.planeX - 13, y: PLANE_Y + 2, vx: -10, vy: -2, life: 0, max: 0.9, c: "#a29d95", s: 1 });
+    if (o.reduced || s.drop.t >= DROP_DUR) endDrop(s, o.reduced);
+  }
+  if (s.fly && !o.frozen) {
+    const g = GEMS[s.fly.i], q = flyPos(s.fly.i, Math.min(1, s.fly.t));
+    if (!o.reduced) s.particles.push({ x: q.x, y: q.y, vx: 0, vy: 0, life: 0, max: 0.5, c: g.light, s: 1 });
+    s.fly.t += dt / 1.1;
+    if (s.fly.t >= 1) {
+      s.fly = null; s.burnedTarget = VIRTUAL[s.gems] ?? FULL_RF; s.burstGlow = Math.min(1.5, s.burstGlow + 0.9);
+      if (!o.reduced) { s.ring = { t: 0, c: g.light }; s.flash = Math.max(s.flash, 0.5); s.flashColor = g.light; }
+    }
+  }
   if (!canStand(p.x, p.y, s.burned)) { const n = nearestStandable(p.x, p.y, s.burned); p.x = n.x; p.y = n.y; s.target = null; }
   let dx = 0, dy = 0;
-  if (!o.frozen) {
+  if (!o.frozen && !s.drop && s.stun <= 0) {
     dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0); dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
     if (dx || dy) s.target = null;
     else if (s.target) {
@@ -137,7 +270,14 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
     const ox = p.x, oy = p.y;
     if (canStand(nx, p.y, s.burned)) p.x = nx;
     if (canStand(p.x, ny, s.burned)) p.y = ny;
-    const moved = Math.hypot(p.x - ox, p.y - oy) > 0.01;
+    let moved = Math.hypot(p.x - ox, p.y - oy) > 0.01;
+    if (s.target && !moved) {
+      // blocked on the way to a tapped spot: slide around the obstacle
+      for (const sgn of [s.detour, (-s.detour) as 1 | -1]) {
+        const sx = p.x - dy * sgn * 48 * dt, sy = p.y + dx * sgn * 48 * dt;
+        if (canStand(sx, sy, s.burned)) { p.x = sx; p.y = sy; s.detour = sgn; moved = true; break; }
+      }
+    }
     if (s.target) { s.stuck = moved ? 0 : s.stuck + dt; if (s.stuck > 0.3) { s.target = null; s.stuck = 0; } }
     p.walking = moved;
     if (moved) {
@@ -146,6 +286,8 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
       p.anim += dt;
     }
   } else p.walking = false;
+
+  if (!o.frozen && !s.drop) updateSpirits(s, dt, o.reduced);
 
   // ambient embers rising from the altar
   if (!o.reduced) {
@@ -170,6 +312,8 @@ const mix = (a: string, b: string, t: number) => {
   const A = toRgb(a), B = toRgb(b), k = Math.max(0, Math.min(1, t));
   return `rgb(${Math.round(A[0] + (B[0] - A[0]) * k)},${Math.round(A[1] + (B[1] - A[1]) * k)},${Math.round(A[2] + (B[2] - A[2]) * k)})`;
 };
+
+const rgba = (h: string, a: number) => { const [r, g, b] = toRgb(h); return `rgba(${r},${g},${b},${a})`; };
 
 type Ctx = CanvasRenderingContext2D;
 const R = (c: Ctx, x: number, y: number, w: number, h: number, color: string) => { c.fillStyle = color; c.fillRect(Math.round(x), Math.round(y), w, h); };
@@ -237,6 +381,61 @@ function drawFriend(c: Ctx, rows: readonly string[], p: Scene["player"]) {
   rows.forEach((row, py) => [...row].forEach((ch, px) => { if (ch === "#") c.fillRect(ox + px, oy + py, 1, 1); }));
 }
 
+function drawGem(c: Ctx, g: Gem, t: number, reduced: boolean) {
+  const gx = Math.round(g.x), bob = reduced ? 0 : Math.round(Math.sin(t * 2.4) * 2), gy = Math.round(g.y) - 15 - bob;
+  c.globalAlpha = 0.35; blob(c, g.x, g.y, 6, 2, "#000000"); c.globalAlpha = 1;
+  R(c, gx - 6, g.y - 2, 12, 3, "#4b4743"); R(c, gx - 5, g.y - 3, 10, 1, "#6a6560");
+  [1, 2, 3, 4, 3, 2, 1].forEach((h, i) => R(c, gx - h, gy + i, h * 2 + 1, 1, g.color));
+  R(c, gx + 1, gy + 4, 3, 2, mix(g.color, "#000000", 0.35));
+  R(c, gx - 3, gy + 2, 2, 1, g.light); R(c, gx - 2, gy + 1, 2, 1, g.light);
+  if (reduced || Math.sin(t * 5) > 0) { R(c, gx + 6, gy - 2, 1, 3, "#ffffff"); R(c, gx + 5, gy - 1, 3, 1, "#ffffff"); }
+}
+
+function drawSpirit(c: Ctx, sp: Spirit, t: number, reduced: boolean) {
+  const bob = reduced ? 0 : Math.round(Math.sin(t * 3 + sp.ph) * 1.5), x = Math.round(sp.x), y = Math.round(sp.y) + bob, wob = reduced ? 0 : Math.round(Math.sin(t * 5 + sp.ph));
+  c.globalAlpha = 0.3 * sp.fade; blob(c, sp.x, sp.y + 2, 5, 1, "#000000");
+  c.globalAlpha = 0.9 * sp.fade;
+  blob(c, x, y - 9, 4, 5, "#6d6577"); blob(c, x, y - 10, 3, 4, "#8b8299");
+  R(c, x - 4, y - 5, 2, 4 + wob, "#6d6577"); R(c, x - 1, y - 4, 2, 5 - wob, "#6d6577"); R(c, x + 2, y - 5, 2, 4 + wob, "#6d6577");
+  R(c, x - 2, y - 11, 1, 2, "#ffb347"); R(c, x + 1, y - 11, 1, 2, "#ffb347");
+  c.globalAlpha = 1;
+}
+
+/** A trail of dots that flows from the player toward the current gem. */
+function drawGuide(c: Ctx, s: Scene, g: Gem, t: number, reduced: boolean) {
+  const p = s.player, dx = g.x - p.x, dy = g.y - 8 - (p.y - 8), d = Math.hypot(dx, dy);
+  if (d < 26) return;
+  const ux = dx / d, uy = dy / d;
+  for (let i = 0; i < 5; i++) {
+    const dist = 14 + ((i * 7 + (reduced ? 0 : t * 18)) % 35);
+    if (dist > d - 10) continue;
+    c.globalAlpha = Math.max(0.25, 1 - dist / 49);
+    R(c, p.x + ux * dist - 1, p.y - 8 + uy * dist - 1, 2, 2, g.light);
+  }
+  c.globalAlpha = 1;
+}
+
+function drawStars(c: Ctx, p: Scene["player"], t: number) {
+  for (let i = 0; i < 3; i++) { const a = t * 6 + i * 2.1; R(c, p.x + Math.cos(a) * 6, p.y - 22 + Math.sin(a) * 2, 2, 2, "#ffd23a"); }
+}
+
+function drawPlane(c: Ctx, x: number, t: number) {
+  const X = Math.round(x), Y = PLANE_Y;
+  R(c, X - 13, Y - 5, 3, 5, "#a8382c"); R(c, X - 11, Y - 1, 24, 5, "#d8d3c6"); R(c, X - 11, Y + 3, 24, 2, "#9a958a"); R(c, X + 13, Y, 3, 3, "#c9c4b8");
+  R(c, X + 5, Y - 1, 5, 2, "#7fd6e6"); R(c, X - 4, Y + 4, 11, 2, "#8a847d"); R(c, X - 2, Y - 3, 8, 2, "#b8b3a6");
+  R(c, X + 16, Y - 2 + (Math.floor(t * 30) % 2), 1, 5, "#e8e8e8");
+}
+
+function drawChute(c: Ctx, x: number, y: number, t: number, reduced: boolean) {
+  const X = Math.round(x), cy = Math.round(y) - 32 + (reduced ? 0 : Math.round(Math.sin(t * 3)));
+  for (let yy = -6; yy <= 1; yy++) { const hw = Math.round(12 * Math.sqrt(Math.max(0, 1 - (yy / 6) ** 2))); c.fillStyle = "#ff8a3a"; c.fillRect(X - hw, cy + yy, hw * 2, 1); }
+  R(c, X - 7, cy - 4, 3, 5, "#fff1d0"); R(c, X + 4, cy - 4, 3, 5, "#fff1d0");
+  for (let j = 0; j <= 9; j++) {
+    const k = j / 9, py = Math.round(cy + 1 + (y - 16 - (cy + 1)) * k);
+    R(c, Math.round(X - 11 + 9 * k), py, 1, 1, "#e8e0d0"); R(c, Math.round(X + 11 - 9 * k), py, 1, 1, "#e8e0d0");
+  }
+}
+
 export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, reduced: boolean) {
   c.imageSmoothingEnabled = false;
   c.globalAlpha = 1; c.globalCompositeOperation = "source-over";
@@ -276,8 +475,23 @@ export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, red
   const lit = b >= 15;
   for (const l of LANTERNS) items.push({ y: l.y, draw: () => { R(c, l.x, l.y - 9, 1, 9, "#2a2522"); R(c, l.x - 1, l.y - 12, 3, 3, lit ? "#ffd66b" : "#2a2724"); } });
   items.push({ y: ALTAR.y, draw: () => drawAltar(c, s, heal, reduced) });
-  if (playerRows) items.push({ y: s.player.y, draw: () => { c.globalAlpha = 0.35; blob(c, s.player.x, s.player.y, 6, 2, "#000000"); c.globalAlpha = 1; drawFriend(c, playerRows, s.player); } });
+  const dp = s.drop ? dropInfo(s.drop.t) : null, cg = currentGem(s);
+  if (cg && !s.drop) items.push({ y: cg.y, draw: () => drawGem(c, cg, t, reduced) });
+  if (!s.drop) for (const sp of s.spirits) items.push({ y: sp.y, draw: () => drawSpirit(c, sp, t, reduced) });
+  const blink = !reduced && s.invuln > 0 && s.stun <= 0 && Math.floor(t * 12) % 2 === 0;
+  if (playerRows && !dp && !blink) items.push({ y: s.player.y, draw: () => { c.globalAlpha = 0.35; blob(c, s.player.x, s.player.y, 6, 2, "#000000"); c.globalAlpha = 1; drawFriend(c, playerRows, s.player); if (s.stun > 0) drawStars(c, s.player, t); } });
   items.sort((a, z) => a.y - z.y).forEach(i => i.draw());
+  if (cg && !s.drop) drawGuide(c, s, cg, t, reduced);
+  if (s.fly) { const g = GEMS[s.fly.i], q = flyPos(s.fly.i, Math.min(1, s.fly.t)); R(c, q.x - 2, q.y - 2, 5, 5, g.color); R(c, q.x - 1, q.y - 1, 2, 2, g.light); }
+  if (dp) {
+    if (playerRows && dp.k >= 0) {
+      const fp = { ...s.player, y: s.player.y - (1 - dp.k) * (SPAWN.y - 30) };
+      c.globalAlpha = 0.35 * (0.4 + 0.6 * dp.k); blob(c, s.player.x, s.player.y, 3 + 3 * dp.k, 1 + dp.k, "#000000"); c.globalAlpha = 1;
+      drawFriend(c, playerRows, fp);
+      if (dp.k < 0.95) drawChute(c, fp.x, fp.y, t, reduced);
+    }
+    drawPlane(c, dp.planeX, t);
+  }
 
   if (b >= 15) for (const f of FIREFLIES) {
     const fx = f.x + (reduced ? 0 : Math.sin(t * f.sp + f.p) * 10), fy = f.y + (reduced ? 0 : Math.cos(t * f.sp * 1.3 + f.p * 2) * 6);
@@ -303,6 +517,12 @@ export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, red
     blob(c, ALTAR.x, ALTAR.y - 16, r, r * 0.7, c.fillStyle as string);
   }
   if (lit) for (const l of LANTERNS) { c.fillStyle = "rgba(255,200,90,0.07)"; blob(c, l.x, l.y - 10, 14, 10, "rgba(255,200,90,0.07)"); blob(c, l.x, l.y - 10, 8, 6, "rgba(255,200,90,0.09)"); }
+  if (cg && !s.drop) {
+    const pulse = reduced ? 1 : 0.85 + 0.15 * Math.sin(t * 3);
+    c.fillStyle = rgba(cg.color, 0.1 * pulse); c.fillRect(Math.round(cg.x) - 4, 0, 8, Math.round(cg.y) - 10);
+    c.fillStyle = rgba(cg.light, 0.16 * pulse); c.fillRect(Math.round(cg.x) - 1, 0, 2, Math.round(cg.y) - 10);
+    blob(c, cg.x, cg.y - 10, 14, 10, rgba(cg.color, 0.14 * pulse));
+  }
   c.globalCompositeOperation = "source-over";
 
   if (s.ring) {
@@ -313,3 +533,17 @@ export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, red
   }
   if (s.flash > 0) { c.globalAlpha = Math.min(0.35, s.flash * 0.3); R(c, 0, 0, W, H, s.flashColor); c.globalAlpha = 1; }
 }
+
+/* ---------- story (kept here so the game stays four files) ---------- */
+export type StoryPage = Readonly<{ title: string; body: readonly string[] }>;
+export const STORY: readonly StoryPage[] = [
+  { title: "The Isle That Glowed", body: ["Long before anyone kept count, there was Ember Isle: a green crown of land where the sea glowed at night and the lanterns never went out.", "Every Rare Friend who ever sailed past swore the same thing. The isle was alive."] },
+  { title: "The Ashfall", body: ["Then came the Ashfall. One night the sky turned the colour of a dead fire. The great flame at the heart of the isle sputtered, and the whole island went quiet.", "The sea turned to slate. The trees turned to bones. Nothing has grown there since."] },
+  { title: "Seven Heartgems", body: ["Only one thing survived: seven Heartgems, the isle's living memory, flung across the ruins by the storm.", "Each gem still holds a piece of the isle's life, locked and waiting. It takes a spark of $RAREFRIENDS to wake one."] },
+  { title: "The Call", body: ["The sky-fleet sent for a single Rare Friend brave enough to answer. It sent for you.", "Find the gems. Wake each one with an ember. Carry its light to the altar and bring the isle back, one stage at a time.", "But beware. The Ashfall left ghosts behind. Ash spirits drift through the ruins, and they hate the light returning."] },
+  { title: "Drop Zone", body: ["Your aircraft is already over the isle. The hatch is open and the wind is loud.", "Three. Two. One.", "Jump!"] },
+];
+export const EPILOGUE: readonly StoryPage[] = [
+  { title: "The Isle Remembers", body: ["The seventh gem sinks into the altar and the flame roars white. The ash lifts off the island like a held breath let go.", "Above the treetops a phoenix spirals out of the light and circles the flame it was born from."] },
+  { title: "Home", body: ["Your Friend looks out over water that shines again, over lanterns that will never go out.", "The isle is not a ruin anymore. It is a home, and you rebuilt it one ember at a time."] },
+];

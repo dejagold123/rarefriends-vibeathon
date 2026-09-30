@@ -21,3 +21,11 @@
 .ei-loading{height:100%;display:flex;gap:16px;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;background:#07080c;color:#f4efe6;font:14px/1.4 ui-monospace,Menlo,Consolas,monospace}
 .ei-loading button{font:inherit;cursor:pointer;padding:9px 13px;border:2px solid #f4efe6;background:#07080c;color:#f4efe6}
 @media(max-width:560px){.ei-hud{inset:6px 6px auto;gap:5px;font-size:10px}.ei-hud button{padding:6px 8px;min-height:32px}.ei-hud-main{padding:4px 6px}.ei-hint{font-size:9px}.ei-mobile-hint{display:inline}.ei-desktop-hint{display:none}.ei-toast{top:26%;font-size:11px}}
+.ei-lore{position:absolute;inset:0;display:grid;place-items:center;padding:14px;background:rgba(7,8,12,.94);z-index:5;overflow:auto}
+.ei-lore-card{width:min(100%,520px);border:2px solid #f4efe6;background:#0d0f16;padding:18px 18px 14px;animation:ei-fade .5s ease both}
+.ei-lore-card h2{margin:6px 0 10px;font-size:18px;color:#ffb347;letter-spacing:.04em}
+.ei-lore-card p{margin:0 0 10px;font-size:14px;line-height:1.55}
+.ei-lore-kicker{font-size:10px;color:#b8b0a3}
+.ei-lore-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+@keyframes ei-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.ei-lore-card{animation:none}}

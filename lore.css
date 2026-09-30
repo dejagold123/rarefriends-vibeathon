@@ -1,5 +1,0 @@
-/* Narrative overlay */
-.ei-lore-backdrop{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(4,5,9,.78)}
-.ei-lore-card{max-width:560px;max-height:90%;overflow:auto;padding:24px;background:#11131b;color:#f4efe6;border:2px solid #ffb347;box-shadow:0 0 0 5px rgba(255,179,71,.12)}
-.ei-lore-card h2{margin:5px 0 16px;color:#ffd23a;font-size:clamp(20px,4vw,32px)}.ei-lore-card p{margin:10px 0}.ei-lore-kicker{color:#ff9a4a;font-size:11px;letter-spacing:.16em}
-.ei-lore-tip{position:absolute;z-index:8;left:50%;bottom:48px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;max-width:min(92%,620px);padding:10px 12px;background:rgba(7,8,12,.94);border:2px solid #ffb347;color:#f4efe6;box-shadow:0 4px 18px #0008}.ei-lore-tip b{color:#ffd23a;white-space:nowrap}.ei-lore-tip span{flex:1}.ei-lore-tip button{min-height:24px!important;padding:2px 7px!important;border:1px solid #f4efe6!important}

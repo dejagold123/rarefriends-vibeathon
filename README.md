@@ -4,7 +4,7 @@
 - Builder: Anthony / @dejagold123
 - Category: Token Activity (with Character Spotlight)
 
-Ember Isle is a pixel-art island-healing game where the selected Rare Friend tends a dying island and players burn simulated $RAREFRIENDS at the altar to restore it over time.
+Ember Isle is a pixel-art adventure where the selected Rare Friend is dropped onto a ruined island, hunts seven Heartgems while dodging ash spirits, and spends simulated $RAREFRIENDS to wake each gem and heal the isle.
 
 ## Source repository and stack
 
@@ -45,20 +45,24 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | --- | --- |
 | WASD / arrow keys | Walk |
 | Tap or click a spot | Walk there |
-| E, or tap the altar | Open the Ember Altar when nearby |
+| E, or tap the glowing gem | Wake the gem when you are standing next to it |
 | Log / Settings buttons | Stage list; sound and reduced-motion toggles |
 
-Walk to the altar in the middle of the island, choose how much simulated RF to burn (1, 5, or all), and confirm in the SDK's in-frame prompt. Each burn plays a flare animation and moves the isle toward its next stage.
+1. Read the short story, then jump: your Friend parachutes from an aircraft onto the ashen isle.
+2. Follow the glowing trail and light beam to the next Heartgem. Gems are found in order.
+3. Dodge the ash spirits that drift along the route. A touch stuns you briefly and knocks you back. They get faster and more numerous with every gem.
+4. Stand next to the gem and wake it. Its cost in simulated RF is shown first, and you confirm in the SDK's in-frame prompt.
+5. The gem flies to the altar and the isle heals one stage. Wake all seven gems to bring the phoenix back.
 
 ## Exact rules (all simulated)
 
 | Rule | Value |
 | --- | --- |
 | Ember price | 1 RF (`1000000000000000000` base units) |
-| Burn | 1 RF = 1 Ember, consumed permanently. No RF is paid back and nothing is redeemable. |
+| Gem cost | Gem 1-7 cost 1 · 2 · 2 · 3 · 3 · 4 · 5 RF (20 RF total). Each RF is one Ember, consumed permanently. No RF is paid back and nothing is redeemable. |
 | Starting balance | 20 simulated RF, supplied by the SDK preview runtime |
-| Healing | Depends only on total RF burned |
-| Stages | 0 RF Ashen Isle · 1 First Sprouts · 3 Green Returns · 6 Blooming Grove · 10 Waters Return · 15 Night Lights · 20 Isle Reborn |
+| Healing | Depends only on how many gems are woken |
+| Stages | Ashen Isle → First Sprouts → Green Returns → Blooming Grove → Waters Return → Night Lights → Beacon Lit → Isle Reborn (one per gem) |
 
 Flares are cosmetic. They change the burst colors and sound and never change healing or pay RF.
 
@@ -74,12 +78,12 @@ Expected RF returned per Ember: 0 in any player-facing sense; the reward field i
 ## How it uses Rare Friends / $RAREFRIENDS
 
 - The game reads the selected Friend and renders it in the world using the Rare Friends sprite system.
-- The gameplay loop is driven by simulated $RAREFRIENDS burned at the altar, which causes the island to heal over time.
+- The gameplay loop is driven by simulated $RAREFRIENDS spent to wake Heartgems, which causes the island to heal stage by stage.
 - The system uses FriendSDK preview runtime actions (`buy`, `play`, `settle`) to simulate those burns without real token transfer or redemption.
 
 ## RF integration and capability gaps
 
-- RF integration: RF is the only resource. Burning it is the whole mechanic, and the island's progress is a visible record of RF burned.
+- RF integration: RF is the only resource. Every gem costs RF to wake, so the island's progress is a visible record of RF spent.
 - No burn action in SDK v0.1.4: the bridge exposes buy, play, settle and redeem, so a burn is modeled as buying and consuming an Ember. A real burn would require a new SDK action or burn-address flow.
 - Schema placeholder: Phoenix Spark carries `reward: "1"` (one base unit, 10^-18 RF) only to satisfy the runtime definition format. The game never shows, offers, or redeems a prize.
 - No persistence: preview ledgers live for the session. Reloading resets the island and the 20 RF balance.
@@ -87,14 +91,14 @@ Expected RF returned per Ember: 0 in any player-facing sense; the reward field i
 
 ## Assets and credits
 
-- Island, trees, altar, phoenix, and effects: drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
+- Island, trees, altar, gems, ash spirits, aircraft, phoenix, and effects: drawn in code (`scene.ts`) at 240 × 160 and scaled 4×. No external image files.
 - Friend sprites: read by the SDK from the Rare Friends artwork deployment.
 - Sounds: the SDK sound kit, synthesized in code.
 
 ## Checks and known issues
 
 - `friendsdk check games/ember-isle` passes and the game builds. The TypeScript typecheck of the game sources passes.
-- Burn flow, odds, and movement/collision were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
+- Gem costs, stage thresholds, spirit hits, the drop-in, and a full seven-gem playthrough were verified against the SDK's real preview client in Node, and every stage was rendered to images and reviewed.
 - The SDK browser checks (`npm run check:browser`, `friendsdk test`) need Playwright's Chromium, which could not be installed in the build environment. Run them before final submission and update this section with the result.
 - The wallet and ownership gate needs a real eligible wallet and has been exercised end-to-end with the live deployment.
 - A public playable demo is now deployed at https://ember-isle-friendsdk.vercel.app/.
@@ -118,5 +122,5 @@ Static build for hosting (for example GitHub Pages): `node scripts/dev-game.mjs 
 
 - The SDK runtime handles wallet connection, owned Friend selection, the ownership check, and confirmations. Game code contains none of that.
 - The selected Friend is drawn in the world using the SDK sprite reader (`createFriendReader`, `spriteFrame`) with the canonical black mask and white halo.
-- Burning uses the fixed action client: `buy(n)` spends n simulated RF for n Embers, `play(n)` offers them to the altar, and `settle()` reveals each flare. Both `buy` and `play` show the runtime's in-frame confirmation.
+- Waking a gem uses the fixed action client: `buy(n)` spends n simulated RF for n Embers, `play(n)` offers them to the gem, and `settle()` reveals each flare. Both `buy` and `play` show the runtime's in-frame confirmation.
 - The game refuses to burn if `client.mode` is not `"preview"`.
