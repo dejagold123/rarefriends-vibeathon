@@ -62,6 +62,9 @@ export type Scene = {
   target: { x: number; y: number } | null;
   stuck: number;
   detour: 1 | -1;
+  dash: number;          // seconds of dash left
+  dashCd: number;        // seconds until the next dash
+  dashDir: { x: number; y: number };
   player: { x: number; y: number; facing: Facing; side: "left" | "right"; walking: boolean; anim: number };
   gems: number;          // gems woken so far
   spirits: Spirit[];
@@ -76,7 +79,7 @@ export type Keys = Readonly<{ left: boolean; right: boolean; up: boolean; down: 
 export function createScene(gems = 0): Scene {
   const v = VIRTUAL[gems] ?? FULL_RF;
   const s: Scene = { time: 0, burned: v, burnedTarget: v, burstGlow: 0, flash: 0, flashColor: "#ffd9a0", ring: null, particles: [], spawnAcc: 0,
-    target: null, stuck: 0, detour: 1, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 },
+    target: null, stuck: 0, detour: 1, dash: 0, dashCd: 0, dashDir: { x: 0, y: 1 }, player: { x: SPAWN.x, y: SPAWN.y, facing: "down", side: "right", walking: false, anim: 0 },
     gems, spirits: [], stun: 0, invuln: 0, hits: 0, drop: null, fly: null };
   spawnSpirits(s);
   return s;
@@ -192,6 +195,27 @@ export function endDrop(s: Scene, reduced = false) {
 
 export const skipDrop = (s: Scene) => endDrop(s, false);
 
+/* ---------- dash ---------- */
+export const DASH_TIME = 0.18, DASH_SPEED = 150, DASH_CD = 1.3;
+/** A short burst of speed. Spirits cannot hit you while dashing or for a moment after. Direction: input, else tapped target, else facing. */
+export function tryDash(s: Scene, ix: number, iy: number): boolean {
+  if (s.dashCd > 0 || s.dash > 0 || s.drop || s.stun > 0) return false;
+  let dx = ix, dy = iy;
+  if (!dx && !dy && s.target) { dx = s.target.x - s.player.x; dy = s.target.y - s.player.y; }
+  if (!dx && !dy) { const f = s.player.facing; dx = f === "left" ? -1 : f === "right" ? 1 : 0; dy = f === "up" ? -1 : f === "down" ? 1 : 0; }
+  const len = Math.hypot(dx, dy) || 1;
+  s.dashDir = { x: dx / len, y: dy / len }; s.dash = DASH_TIME; s.dashCd = DASH_CD; s.invuln = Math.max(s.invuln, DASH_TIME + 0.12); s.target = null;
+  return true;
+}
+function stepDash(s: Scene, dt: number, reduced: boolean) {
+  const p = s.player, dist = DASH_SPEED * dt, n = Math.max(1, Math.ceil(dist / 2)), sx = (s.dashDir.x * dist) / n, sy = (s.dashDir.y * dist) / n;
+  for (let i = 0; i < n; i++) { if (canStand(p.x + sx, p.y, s.burned)) p.x += sx; if (canStand(p.x, p.y + sy, s.burned)) p.y += sy; }
+  s.dash = Math.max(0, s.dash - dt); p.walking = true; p.anim += dt * 2;
+  p.facing = Math.abs(s.dashDir.x) > Math.abs(s.dashDir.y) ? (s.dashDir.x > 0 ? "right" : "left") : (s.dashDir.y > 0 ? "down" : "up");
+  if (p.facing === "left" || p.facing === "right") p.side = p.facing;
+  if (!reduced) s.particles.push({ x: p.x, y: p.y - 6, vx: 0, vy: 0, life: 0, max: 0.3, c: "#ffffff", s: 2 });
+}
+
 /* ---------- waking a gem ---------- */
 function flyPos(i: number, k: number) {
   const g = GEMS[i];
@@ -228,7 +252,7 @@ export function burst(s: Scene, embers: number, tier: number, reduced: boolean, 
   }
 }
 
-export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; reduced: boolean }) {
+export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; reduced: boolean; stick?: { x: number; y: number } }) {
   s.time += dt;
   const ease = o.reduced ? 1 : Math.min(1, dt * 1.6);
   s.burned += (s.burnedTarget - s.burned) * ease;
@@ -238,7 +262,7 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
   if (s.ring) { s.ring.t += dt; if (s.ring.t > 0.9) s.ring = null; }
 
   const p = s.player;
-  s.invuln = Math.max(0, s.invuln - dt); s.stun = Math.max(0, s.stun - dt);
+  s.invuln = Math.max(0, s.invuln - dt); s.stun = Math.max(0, s.stun - dt); s.dashCd = Math.max(0, s.dashCd - dt);
   if (s.drop && !o.frozen) {
     s.drop.t += dt;
     const di = dropInfo(s.drop.t);
@@ -255,18 +279,23 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
     }
   }
   if (!canStand(p.x, p.y, s.burned)) { const n = nearestStandable(p.x, p.y, s.burned); p.x = n.x; p.y = n.y; s.target = null; }
-  let dx = 0, dy = 0;
-  if (!o.frozen && !s.drop && s.stun <= 0) {
-    dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0); dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+  if (s.stun > 0) s.dash = 0;
+  const dashing = s.dash > 0 && !o.frozen && !s.drop;
+  if (dashing) { s.target = null; stepDash(s, dt, o.reduced); }
+  let dx = 0, dy = 0, spd = 1;
+  if (!dashing && !o.frozen && !s.drop && s.stun <= 0) {
+    const sm = o.stick ? Math.hypot(o.stick.x, o.stick.y) : 0;
+    if (o.stick && sm > 0.15) { dx = o.stick.x; dy = o.stick.y; spd = Math.min(1, sm); }
+    else { dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0); dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0); }
     if (dx || dy) s.target = null;
     else if (s.target) {
       const tx = s.target.x - p.x, ty = s.target.y - p.y, d = Math.hypot(tx, ty);
       if (d < 1.5) s.target = null; else { dx = tx / d; dy = ty / d; }
     }
-  } else s.target = null;
+  } else if (!dashing) s.target = null;
   if (dx || dy) {
     const len = Math.hypot(dx, dy); dx /= len; dy /= len;
-    const nx = p.x + dx * 48 * dt, ny = p.y + dy * 48 * dt;
+    const nx = p.x + dx * 48 * spd * dt, ny = p.y + dy * 48 * spd * dt;
     const ox = p.x, oy = p.y;
     if (canStand(nx, p.y, s.burned)) p.x = nx;
     if (canStand(p.x, ny, s.burned)) p.y = ny;
@@ -274,7 +303,7 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
     if (s.target && !moved) {
       // blocked on the way to a tapped spot: slide around the obstacle
       for (const sgn of [s.detour, (-s.detour) as 1 | -1]) {
-        const sx = p.x - dy * sgn * 48 * dt, sy = p.y + dx * sgn * 48 * dt;
+        const sx = p.x - dy * sgn * 48 * spd * dt, sy = p.y + dx * sgn * 48 * spd * dt;
         if (canStand(sx, sy, s.burned)) { p.x = sx; p.y = sy; s.detour = sgn; moved = true; break; }
       }
     }
@@ -285,7 +314,7 @@ export function update(s: Scene, dt: number, keys: Keys, o: { frozen: boolean; r
       if (p.facing === "left" || p.facing === "right") p.side = p.facing;
       p.anim += dt;
     }
-  } else p.walking = false;
+  } else if (!dashing) p.walking = false;
 
   if (!o.frozen && !s.drop) updateSpirits(s, dt, o.reduced);
 

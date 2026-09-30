@@ -45,12 +45,14 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | --- | --- |
 | WASD / arrow keys | Walk |
 | Tap or click a spot | Walk there |
+| On-screen stick (touch screens) | Steer smoothly; tilt partway to walk slower |
+| Dash button, or Space / Shift | A quick burst of speed (about 30 px, 1.3 s cooldown). Spirits cannot hit you during the dash |
 | E, or tap the glowing gem | Wake the gem when you are standing next to it |
 | Log / Settings buttons | Stage list; sound and reduced-motion toggles |
 
 1. Read the short story, then jump: your Friend parachutes from an aircraft onto the ashen isle.
 2. Follow the glowing trail and light beam to the next Heartgem. Gems are found in order.
-3. Dodge the ash spirits that drift along the route. A touch stuns you briefly and knocks you back. They get faster and more numerous with every gem.
+3. Dodge the ash spirits that drift along the route. Walk around them or dash through a gap. A touch stuns you briefly and knocks you back. They get faster and more numerous with every gem.
 4. Stand next to the gem and wake it. Its cost in simulated RF is shown first, and you confirm in the SDK's in-frame prompt.
 5. The gem flies to the altar and the isle heals one stage. Wake all seven gems to bring the phoenix back.
 

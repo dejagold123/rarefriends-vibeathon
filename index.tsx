@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { GameComponentProps } from "@rarefriends/friendsdk/runtime";
 import { GameMenu } from "@rarefriends/friendsdk/frame";
 import { formatGameAmount } from "@rarefriends/friendsdk/ui";
@@ -9,7 +9,7 @@ import { createFriendReader, spriteFrame, type GenerationSprites } from "@rarefr
 import { createFriendSoundKit, type FriendSoundKit, type FriendSoundCue } from "@rarefriends/friendsdk/sounds";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { EPILOGUE, GEMS, H, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
+import { DASH_CD, EPILOGUE, GEMS, H, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
 
 type Menu = "gem" | "log" | "settings" | null;
 type Phase = "lore" | "drop" | "play" | "epilogue";
@@ -18,6 +18,26 @@ const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
 /** Settled burns x price, as a plain number of RF (price is a whole number of RF in game.json). */
 const burnedRF = (snap: GameSnapshot, price: bigint) => Number((BigInt(snap.plays.filter(p => p.outcomeId !== null).length) * price) / 10n ** 16n) / 100;
 const TIER_CUE: Record<number, FriendSoundCue> = { 1: "purchase", 2: "reveal-common", 3: "reveal-rare", 4: "reveal-legendary" };
+
+/** On-screen analog stick for touch screens. Reports x/y in -1..1. */
+function Joystick({ onMove }: { onMove: (x: number, y: number) => void }) {
+  const base = useRef<HTMLDivElement | null>(null), knob = useRef<HTMLDivElement | null>(null), active = useRef<number | null>(null);
+  useEffect(() => () => onMove(0, 0), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = base.current; if (!el) return;
+    const r = el.getBoundingClientRect(), radius = r.width / 2, max = radius * 0.8;
+    let dx = e.clientX - (r.left + radius), dy = e.clientY - (r.top + radius); const d = Math.hypot(dx, dy);
+    if (d > max) { dx = (dx / d) * max; dy = (dy / d) * max; }
+    if (knob.current) knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
+    onMove(dx / max, dy / max);
+  };
+  const end = () => { active.current = null; if (knob.current) knob.current.style.transform = "translate(0px, 0px)"; onMove(0, 0); };
+  return <div ref={base} className="ei-stick" aria-hidden="true"
+    onPointerDown={e => { e.preventDefault(); active.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
+    onPointerMove={e => { if (active.current === e.pointerId) set(e); }} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
+    <div ref={knob} className="ei-stick-knob" />
+  </div>;
+}
 
 function Story({ pages, doneLabel, onDone, skippable }: { pages: readonly StoryPage[]; doneLabel: string; onDone: () => void; skippable: boolean }) {
   const [i, setI] = useState(0), page = pages[i], last = i === pages.length - 1;
@@ -49,14 +69,15 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   const canvasRef = useRef<HTMLCanvasElement | null>(null), rootRef = useRef<HTMLElement | null>(null);
   const sceneRef = useRef<Scene>(createScene(0)), spritesRef = useRef<GenerationSprites | null>(null), keysRef = useRef<{ left: boolean; right: boolean; up: boolean; down: boolean }>({ left: false, right: false, up: false, down: false });
   const sound = useRef<FriendSoundKit | null>(null), locked = useRef(false), epoch = useRef(0), nearRef = useRef(false), pendingGem = useRef(false);
-  const phaseRef = useRef<Phase>("lore"), hitsRef = useRef(0), endTimer = useRef(0);
+  const phaseRef = useRef<Phase>("lore"), hitsRef = useRef(0), endTimer = useRef(0), stickRef = useRef({ x: 0, y: 0 });
+  const [dashPct, setDashPct] = useState(1), dashPctRef = useRef(1);
   const toastKey = useRef(0), toastTimer = useRef(0);
   const live = useRef({ paused, menuOpen: false, busy, reduced });
   live.current = { paused, menuOpen: menu !== null, busy, reduced };
   const price = client.definition.price;
 
   const setPhase = (next: Phase) => { phaseRef.current = next; setPhaseState(next); };
-  const clearKeys = () => { keysRef.current.left = keysRef.current.right = keysRef.current.up = keysRef.current.down = false; };
+  const clearKeys = () => { keysRef.current.left = keysRef.current.right = keysRef.current.up = keysRef.current.down = false; stickRef.current = { x: 0, y: 0 }; };
   const navigate = (next: Menu) => { if (live.current.busy || live.current.paused || phaseRef.current !== "play") return; clearKeys(); sceneRef.current.target = null; setMenu(next); setError(""); setMessage(""); };
   const navRef = useRef(navigate); navRef.current = navigate;
   const showToast = (title: string, body: string) => {
@@ -64,6 +85,14 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(t => (t && t.key === key ? null : t)), 3400);
   };
   const toastRef = useRef(showToast); toastRef.current = showToast;
+  /** Dash in the direction the player is steering (stick or keys), else toward a tapped spot, else the way they face. */
+  const doDash = () => {
+    const l = live.current; if (l.paused || l.menuOpen || l.busy || phaseRef.current !== "play") return;
+    const k = keysRef.current, st = stickRef.current; let ix = (k.right ? 1 : 0) - (k.left ? 1 : 0), iy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
+    if (Math.hypot(st.x, st.y) > 0.15) { ix = st.x; iy = st.y; }
+    if (tryDash(sceneRef.current, ix, iy)) pendingGem.current = false;
+  };
+  const dashRef = useRef(doDash); dashRef.current = doDash;
 
   // Load the session and the selected Friend's artwork.
   useEffect(() => {
@@ -94,7 +123,9 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const l = live.current, scene = sceneRef.current, art = spritesRef.current, ph = phaseRef.current;
       const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "epilogue";
-      update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced });
+      update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced, stick: frozen ? undefined : stickRef.current });
+      const pct = Math.round((1 - scene.dashCd / DASH_CD) * 10) / 10;
+      if (pct !== dashPctRef.current) { dashPctRef.current = pct; setDashPct(pct); }
       const p = scene.player;
       const frame = l.reduced ? 0 : p.walking ? Math.floor(p.anim * 9) % 8 : Math.floor(scene.time * 4) % 8;
       const rows = art ? spriteFrame(art, p.facing, p.walking, frame, p.side).frame.rows : null;
@@ -117,9 +148,10 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const l = live.current, dir = map[e.key], ph = phaseRef.current;
       if (dir) { if (l.paused || l.menuOpen || l.busy || ph !== "play") return; keysRef.current[dir] = true; pendingGem.current = false; e.preventDefault(); return; }
+      if ((e.key === " " || e.key === "Shift") && !e.repeat) { e.preventDefault(); dashRef.current(); return; }
       if ((e.key === "e" || e.key === "E") && !e.repeat && !l.paused && !l.menuOpen && !l.busy && nearRef.current) { e.preventDefault(); navRef.current("gem"); }
     };
-    const up = (e: KeyboardEvent) => { const dir = map[e.key]; if (dir) keysRef.current[dir] = false; };
+    const up = (e: KeyboardEvent) => { const dir = map[e.key]; if (dir) keysRef.current[dir] = false; if (e.key === " ") e.preventDefault(); };
     const hidden = () => { if (document.hidden) clearKeys(); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); window.addEventListener("blur", clearKeys); document.addEventListener("visibilitychange", hidden);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", clearKeys); document.removeEventListener("visibilitychange", hidden); };
@@ -205,7 +237,12 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       {toast && <div className="ei-toast" role="status" key={toast.key}><b>{toast.title}</b><div>{toast.body}</div></div>}
       {interactive && near && gem && <div className="ei-prompt"><button type="button" className="ei-primary" onClick={() => navigate("gem")}>Wake the {gem.name} · {gem.cost} RF (E)</button></div>}
       {phase === "drop" && <p className="ei-hint">Tap to skip</p>}
-      {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Tap to walk · follow the glow · dodge the spirits</span></p>}
+      {interactive && <>
+        <Joystick onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
+        <button type="button" className={`ei-dash${dashPct >= 1 ? " ready" : ""}`} style={{ "--p": dashPct } as CSSProperties} aria-label="Dash (Space or Shift)"
+          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doDash(); }} onClick={e => { if (e.detail === 0) doDash(); }}>Dash</button>
+      </>}
+      {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · Space or Shift to dash · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Stick or tap to move · Dash to dodge · follow the glow</span></p>}
     </div>
     {phase === "lore" && <Story pages={STORY} doneLabel="Jump!" skippable onDone={beginDrop} />}
     {phase === "epilogue" && <Story pages={EPILOGUE} doneLabel="Stay on the isle" skippable={false} onDone={() => setPhase("play")} />}

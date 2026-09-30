@@ -29,3 +29,8 @@
 .ei-lore-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
 @keyframes ei-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.ei-lore-card{animation:none}}
+.ei-game .ei-stick{display:none;position:absolute;left:14px;bottom:18px;width:104px;height:104px;border-radius:50%;border:2px solid #f4efe6;background:rgba(7,8,12,.55);touch-action:none;z-index:3;padding:0}
+.ei-stick-knob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:#ffb347;border:2px solid #f4efe6;pointer-events:none}
+.ei-game .ei-dash{position:absolute;right:14px;bottom:26px;width:76px;height:76px;min-height:0;padding:0;border-radius:50%;font-weight:700;letter-spacing:.04em;z-index:3;touch-action:none;color:#f4efe6;text-shadow:0 0 3px #000;background:linear-gradient(to top,#b8742a calc(var(--p,1) * 100%),#07080c calc(var(--p,1) * 100%))}
+.ei-game .ei-dash.ready{background:#ffb347;color:#07080c;text-shadow:none}
+@media(pointer:coarse){.ei-game .ei-stick{display:block}.ei-prompt{bottom:132px}.ei-hint{left:126px;right:100px}}
