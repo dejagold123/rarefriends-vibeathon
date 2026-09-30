@@ -51,12 +51,21 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 | E, or tap the glowing gem | Wake the gem when you are standing next to it |
 | 🔊 Sound / Log / Settings buttons | Ambient chiptune BGM & SFX mute toggle; Stage list; sound and reduced-motion toggles |
 
-
 1. Read the short story, then jump: your Friend parachutes from an aircraft onto the ashen isle.
 2. Follow the glowing trail and light beam to the next Heartgem. Gems are found in order.
 3. Dodge the ash spirits that drift along the route. Walk around them, dash through a gap, or activate your Shield (unlocked at Gem 2) to walk right through them and terrain obstacles. Touch by a spirit shows a non-obstructive top-right alert, stuns you briefly, and knocks you back. They get faster and more numerous with every gem.
 4. Stand next to the gem and wake it. Its cost in simulated RF is shown first, and you confirm in the SDK's in-frame prompt.
-5. The gem flies to the altar and the isle heals one stage. Wake all seven gems to bring the phoenix back.
+5. The gem flies to the altar and the isle heals one stage. Wake all seven gems to bring the phoenix back, trigger the celebration dialogue with island companions, and view your victory stats on the Replay End Screen!
+
+## Key Features & Experience
+
+- **Mobile Landscape Orientation Lock:** Optimized landscape mode layout with an interactive rotation prompt overlay when held in portrait mode on mobile devices.
+- **Shield Protection System:** Unlocks at Gem 2 (`Q` key or Shield button). Grants 5s invulnerability and terrain obstacle phase-through with a 5s cooldown.
+- **Non-Obstructive Toast Alerts:** Transparent glassmorphic top-right spirit alerts.
+- **Victory Dialogue & Companions:** Summons pixel-art island companions (Isle Guardian, Phoenix Keeper, Spirit Guide) and triggers a victory story sequence upon waking the 7th gem.
+- **Victory End Screen & Replay Button:** Displays journey completion stats (7/7 Gems, 20 RF Spent, Spirit Hits) with a 1-click **Play Again (Replay)** button to restart instantly.
+- **Web Audio Chiptune BGM & SFX:** Ambient island BGM loop, victory fanfare, Dash/Shield sound effects, and a 1-click **`🔊 Sound On`** / **`🔇 Sound Off`** toggle in the top HUD and Settings menu.
+
 
 ## Exact rules (all simulated)
 
