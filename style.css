@@ -38,3 +38,20 @@
 @media(max-width:560px){.ei-hud{inset:6px 6px auto;gap:5px;font-size:10px}.ei-hud button{padding:6px 8px;min-height:32px}.ei-hud-main{padding:4px 6px}.ei-hint{font-size:9px}.ei-toast{top:auto;bottom:140px;right:8px;font-size:10px;max-width:180px}}
 @media(max-width:480px){.ei-game .ei-stick{width:92px;height:92px;left:10px;bottom:14px}.ei-stick-knob{width:38px;height:38px;margin:-19px 0 0 -19px}.ei-game .ei-dash{width:68px;height:68px;right:10px;bottom:18px;font-size:12px}.ei-game .ei-shield{width:58px;height:58px;right:12px;bottom:94px;font-size:10px}.ei-prompt{bottom:116px}.ei-hud-line{gap:6px}}
 
+.ei-orientation-overlay{display:none;position:absolute;inset:0;background:rgba(7,8,12,.96);z-index:20;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;backdrop-filter:blur(8px)}
+.ei-orientation-icon{font-size:44px;margin-bottom:12px;animation:ei-rotate-phone 2s infinite ease-in-out}
+.ei-orientation-overlay h3{margin:0 0 8px;color:#ffb347;font-size:16px}
+.ei-orientation-overlay p{margin:0 0 16px;color:#b8b0a3;font-size:12px;max-width:280px}
+@keyframes ei-rotate-phone{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-90deg)}}
+@media(max-width:768px) and (orientation:portrait){.ei-orientation-overlay{display:flex}}
+
+.ei-victory-overlay{position:absolute;inset:0;display:grid;place-items:center;padding:16px;background:rgba(7,8,12,.92);z-index:10;animation:ei-fade .5s ease both}
+.ei-victory-card{width:min(100%,480px);border:3px solid #ffb347;background:#0d0f16;padding:24px;text-align:center;box-shadow:0 0 30px rgba(255,179,71,.25)}
+.ei-victory-card h1{margin:0 0 8px;font-size:22px;color:#ffd23a;letter-spacing:.04em}
+.ei-victory-card p{margin:6px 0 16px;font-size:13px;color:#f4efe6;line-height:1.5}
+.ei-victory-stats{display:flex;justify-content:space-around;background:rgba(255,255,255,.05);border:1px solid #3a352e;padding:12px;margin:16px 0;border-radius:4px}
+.ei-victory-stat b{display:block;font-size:16px;color:#ffb347}
+.ei-victory-stat span{font-size:10px;color:#b8b0a3}
+.ei-victory-actions{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
+
+

@@ -12,8 +12,9 @@ import "./style.css";
 import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
 
 type Menu = "gem" | "log" | "settings" | null;
-type Phase = "lore" | "drop" | "play" | "epilogue";
+type Phase = "lore" | "drop" | "play" | "epilogue" | "victory";
 const rf = (value: bigint) => `${formatGameAmount(value, 18)} RF`;
+
 const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
 /** Settled burns x price, as a plain number of RF (price is a whole number of RF in game.json). */
 const burnedRF = (snap: GameSnapshot, price: bigint) => Number((BigInt(snap.plays.filter(p => p.outcomeId !== null).length) * price) / 10n ** 16n) / 100;
@@ -231,9 +232,21 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   const affordable = Number(snapshot.rfBalance / price), pending = snapshot.plays.some(p => p.outcomeId === null);
   const feedback = <p role={error ? "alert" : "status"}>{error || message || (busy ? "Waiting for confirmation…" : "All RF here is simulated.")}</p>;
   const interactive = !menu && !busy && !paused && phase === "play";
-  const storyOpen = phase === "lore" || phase === "epilogue";
+  const storyOpen = phase === "lore" || phase === "epilogue" || phase === "victory";
+
+  const replayGame = () => {
+    sceneRef.current = createScene(0);
+    clearKeys();
+    hitsRef.current = 0;
+    setPhase("lore");
+  };
 
   return <section ref={rootRef} tabIndex={-1} className="ei-game" aria-label="Ember Isle" aria-busy={busy}>
+    <div className="ei-orientation-overlay" role="alert">
+      <div className="ei-orientation-icon">📱🔄</div>
+      <h3>Rotate Your Device</h3>
+      <p>Please rotate your phone to landscape mode for the best Ember Isle experience.</p>
+    </div>
     <div className="ei-stage" inert={Boolean(menu) || paused || storyOpen || undefined}>
       <canvas ref={canvasRef} className="ei-canvas" width={W} height={H} role="img" aria-label={`Pixel-art island, ${STAGES[stage].name}`} onPointerDown={onPointerDown} />
       {phase !== "lore" && <div className="ei-hud">
@@ -253,12 +266,27 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
         <button type="button" className={`ei-dash${dashPct >= 1 ? " ready" : ""}`} style={{ "--p": dashPct } as CSSProperties} aria-label="Dash (Space or Shift)"
           onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doDash(); }} onClick={e => { if (e.detail === 0) doDash(); }}>Dash</button>
         {shieldUnlocked && <button type="button" className={`ei-shield${shieldPct >= 1 ? " ready" : ""}`} style={{ "--p": shieldPct } as CSSProperties} aria-label="Shield (Q)"
-          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doShield(); }} onClick={e => { if (e.detail === 0) doShield(); }}>Shield</button>}
+          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doShield(); }}>Shield</button>}
       </>}
       {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · Space or Shift to dash{shieldUnlocked ? " · Q to shield" : ""} · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Stick or tap to move · Dash to dodge{shieldUnlocked ? " · Shield to phase through" : ""} · follow the glow</span></p>}
     </div>
     {phase === "lore" && <Story pages={STORY} doneLabel="Jump!" skippable onDone={beginDrop} />}
-    {phase === "epilogue" && <Story pages={EPILOGUE} doneLabel="Stay on the isle" skippable={false} onDone={() => setPhase("play")} />}
+    {phase === "epilogue" && <Story pages={EPILOGUE} doneLabel="Celebrate with Companions 🎉" skippable={false} onDone={() => setPhase("victory")} />}
+    {phase === "victory" && <div className="ei-victory-overlay" role="dialog" aria-modal="true" aria-label="Victory">
+      <div className="ei-victory-card">
+        <h1>🏆 Isle Reborn!</h1>
+        <p>You restored all 7 Heartgems, brought back the glowing waters, and brought the Phoenix back to Ember Isle!</p>
+        <div className="ei-victory-stats">
+          <div className="ei-victory-stat"><b>7 / 7</b><span>Gems Restored</span></div>
+          <div className="ei-victory-stat"><b>20 RF</b><span>Simulated Spent</span></div>
+          <div className="ei-victory-stat"><b>{hitsRef.current}</b><span>Spirit Hits</span></div>
+        </div>
+        <div className="ei-victory-actions">
+          <button type="button" className="ei-primary" onClick={replayGame}>Play Again (Replay)</button>
+          <button type="button" onClick={() => setPhase("play")}>Explore Healed Isle</button>
+        </div>
+      </div>
+    </div>}
     {menu && <GameMenu title={menu === "gem" ? "Heartgem" : menu === "log" ? "Isle log" : "Settings"} onClose={busy ? undefined : () => navigate(null)}>
       <div className="ei-menu-body">
       {menu === "gem" ? (gem ? <>

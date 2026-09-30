@@ -527,6 +527,24 @@ export function draw(c: Ctx, s: Scene, playerRows: readonly string[] | null, red
   const dp = s.drop ? dropInfo(s.drop.t) : null, cg = currentGem(s);
   if (cg && !s.drop) items.push({ y: cg.y, draw: () => drawGem(c, cg, t, reduced) });
   if (!s.drop) for (const sp of s.spirits) items.push({ y: sp.y, draw: () => drawSpirit(c, sp, t, reduced) });
+  if (b >= 20) {
+    const npcs = [
+      { x: ALTAR.x - 28, y: ALTAR.y + 12, body: "#ff8a3a", hair: "#ffd23a" },
+      { x: ALTAR.x + 28, y: ALTAR.y + 14, body: "#4af0ff", hair: "#ffffff" },
+      { x: POND.x - 12, y: POND.y + 16, body: "#a855f7", hair: "#ec4899" }
+    ];
+    for (const npc of npcs) {
+      items.push({
+        y: npc.y,
+        draw: () => {
+          c.globalAlpha = 0.35; blob(c, npc.x, npc.y, 6, 2, "#000000"); c.globalAlpha = 1;
+          R(c, npc.x - 3, npc.y - 12, 6, 8, npc.body);
+          R(c, npc.x - 4, npc.y - 16, 8, 5, npc.hair);
+          R(c, npc.x - 2, npc.y - 10, 1, 1, "#ffffff"); R(c, npc.x + 1, npc.y - 10, 1, 1, "#ffffff");
+        }
+      });
+    }
+  }
   const blink = !reduced && s.invuln > 0 && s.stun <= 0 && Math.floor(t * 12) % 2 === 0;
   if (playerRows && !dp && !blink) items.push({ y: s.player.y, draw: () => { c.globalAlpha = 0.35; blob(c, s.player.x, s.player.y, 6, 2, "#000000"); c.globalAlpha = 1; drawFriend(c, playerRows, s.player); if (s.stun > 0) drawStars(c, s.player, t); if (s.shield > 0) { const sa = 0.25 + 0.15 * Math.sin(t * 6); c.globalAlpha = sa; blob(c, s.player.x, s.player.y - 8, 12, 10, "#4af0ff"); c.globalAlpha = sa * 0.5; blob(c, s.player.x, s.player.y - 8, 14, 12, "#2ab8d0"); c.globalAlpha = 1; } } });
   items.sort((a, z) => a.y - z.y).forEach(i => i.draw());
@@ -593,6 +611,8 @@ export const STORY: readonly StoryPage[] = [
   { title: "Drop Zone", body: ["Your aircraft is already over the isle. The hatch is open and the wind is loud.", "Three. Two. One.", "Jump!"] },
 ];
 export const EPILOGUE: readonly StoryPage[] = [
-  { title: "The Isle Remembers", body: ["The seventh gem sinks into the altar and the flame roars white. The ash lifts off the island like a held breath let go.", "Above the treetops a phoenix spirals out of the light and circles the flame it was born from."] },
-  { title: "Home", body: ["Your Friend looks out over water that shines again, over lanterns that will never go out.", "The isle is not a ruin anymore. It is a home, and you rebuilt it one ember at a time."] },
+  { title: "Celebration on Ember Isle! 🌟", body: ["The seventh gem sinks into the altar and the flame roars white. The ash lifts off the island like a held breath let go.", "From across the waters, island companions and Rare Friends arrive to celebrate the miracle!"] },
+  { title: "Isle Guardian", body: ["'You did it! The ash has cleared, the waters flow once more, and the blooming grove is alive with light.'", "'The 7th Heartgem is restored and the Phoenix flies high above us!'"] },
+  { title: "Phoenix Keeper", body: ["'Together we saved Ember Isle! The ancient lanterns will burn bright forever.'", "'Thank you, brave Friend, for guiding us back home.'"] },
 ];
+
