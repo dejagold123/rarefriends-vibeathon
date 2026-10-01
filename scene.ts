@@ -616,3 +616,10 @@ export const EPILOGUE: readonly StoryPage[] = [
   { title: "Phoenix Keeper", body: ["'Together we saved Ember Isle! The ancient lanterns will burn bright forever.'", "'Thank you, brave Friend, for guiding us back home.'"] },
 ];
 
+
+/** Controls guide, shown once after the lore story (before drop-in) and reachable any time from Settings. */
+export const HOWTO: readonly StoryPage[] = [
+  { title: "How to Play", body: ["Move with the on-screen stick (or WASD / arrow keys on a keyboard). Walk toward the glowing ember trail to find the next Heartgem.", "Tap a gem (or walk up to it) to open it, then wake it with simulated RF. Each gem you wake heals one stage of the isle."] },
+  { title: "Dodge the Ash Spirits", body: ["Ash spirits drift near the paths. Touching one stuns you for a moment, so steer around them.", "Tap Dash (or press Space / Shift) for a quick burst of speed to slip past a spirit or close a gap."] },
+  { title: "One More Thing", body: ["A Shield ability unlocks after your second Heartgem. While it's active, spirits pass right through you.", "Follow the glow, wake all seven gems, and bring Ember Isle back to life."] },
+];

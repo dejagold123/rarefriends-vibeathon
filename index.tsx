@@ -8,10 +8,10 @@ import type { GameSnapshot } from "@rarefriends/friendsdk/game";
 import { createFriendReader, spriteFrame, type GenerationSprites } from "@rarefriends/friendsdk/sprites";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
+import { DASH_CD, EPILOGUE, GEMS, H, HOWTO, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
 
-type Menu = "gem" | "log" | "settings" | null;
-type Phase = "lore" | "drop" | "play" | "epilogue" | "victory";
+type Menu = "gem" | "log" | "settings" | "help" | null;
+type Phase = "lore" | "howto" | "drop" | "play" | "epilogue" | "victory";
 const rf = (value: bigint) => `${formatGameAmount(value, 18)} RF`;
 
 const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
@@ -72,6 +72,7 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
   const [dashPct, setDashPct] = useState(1), dashPctRef = useRef(1);
   const [shieldPct, setShieldPct] = useState(1), shieldPctRef = useRef(1);
   const [shieldUnlocked, setShieldUnlocked] = useState(false);
+  const shieldIntroShown = useRef(false);
   const toastKey = useRef(0), toastTimer = useRef(0);
   const live = useRef({ paused, menuOpen: false, busy, reduced });
   live.current = { paused, menuOpen: menu !== null, busy, reduced };
@@ -132,13 +133,16 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
     const step = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const l = live.current, scene = sceneRef.current, art = spritesRef.current, ph = phaseRef.current;
-      const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "epilogue";
+      const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "howto" || ph === "epilogue";
       update(scene, dt, frozen ? NO_KEYS : keysRef.current, { frozen, reduced: l.reduced, stick: frozen ? undefined : stickRef.current });
       const pct = Math.round((1 - scene.dashCd / DASH_CD) * 10) / 10;
       if (pct !== dashPctRef.current) { dashPctRef.current = pct; setDashPct(pct); }
       const spct = Math.round((1 - scene.shieldCd / (SHIELD_TIME + SHIELD_CD)) * 10) / 10;
       if (spct !== shieldPctRef.current) { shieldPctRef.current = spct; setShieldPct(spct); }
-      if (scene.gems >= 2 !== shieldUnlocked) setShieldUnlocked(scene.gems >= 2);
+      if (scene.gems >= 2 !== shieldUnlocked) {
+        setShieldUnlocked(scene.gems >= 2);
+        if (scene.gems >= 2 && !shieldIntroShown.current) { shieldIntroShown.current = true; toastRef.current("Shield unlocked!", "Tap Shield (or press Q) to pass through ash spirits for a few seconds."); }
+      }
       const p = scene.player;
       const frame = l.reduced ? 0 : p.walking ? Math.floor(p.anim * 9) % 8 : Math.floor(scene.time * 4) % 8;
       const rows = art ? spriteFrame(art, p.facing, p.walking, frame, p.side).frame.rows : null;
@@ -231,19 +235,20 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
   const affordable = Number(snapshot.rfBalance / price), pending = snapshot.plays.some(p => p.outcomeId === null);
   const feedback = <p role={error ? "alert" : "status"}>{error || message || (busy ? "Waiting for confirmation…" : "All RF here is simulated.")}</p>;
   const interactive = !menu && !busy && !paused && phase === "play";
-  const storyOpen = phase === "lore" || phase === "epilogue" || phase === "victory";
+  const storyOpen = phase === "lore" || phase === "howto" || phase === "epilogue" || phase === "victory";
 
   const replayGame = () => {
     sceneRef.current = createScene(0);
     clearKeys();
     hitsRef.current = 0;
+    shieldIntroShown.current = false;
     setPhase("lore");
   };
 
   return <section ref={rootRef} tabIndex={-1} className="ei-game" aria-label="Ember Isle" aria-busy={busy}>
     <div className="ei-stage" inert={Boolean(menu) || paused || storyOpen || undefined}>
       <canvas ref={canvasRef} className="ei-canvas" width={W} height={H} role="img" aria-label={`Pixel-art island, ${STAGES[stage].name}`} onPointerDown={onPointerDown} />
-      {phase !== "lore" && <div className="ei-hud">
+      {phase !== "lore" && phase !== "howto" && <div className="ei-hud">
         <div className="ei-hud-main" role="status" aria-live="polite">
           <div className="ei-hud-line"><span>Simulated: <b>{rf(snapshot.rfBalance)}</b></span><span>Gems: <b>{stage} / {GEMS.length}</b></span></div>
           <div>{gem ? <>Find the {gem.name} · <b>{gem.cost} RF</b></> : "Isle Reborn. Journey complete."}</div>
@@ -251,6 +256,7 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
         </div>
         <button type="button" onClick={() => navigate("log")}>Log</button>
         <button type="button" onClick={() => navigate("settings")}>Settings</button>
+        <button type="button" onClick={() => navigate("help")}>How to Play</button>
       </div>}
       {toast && <div className="ei-toast" role="status" key={toast.key}><b>{toast.title}</b><div>{toast.body}</div></div>}
       {interactive && near && gem && <div className="ei-prompt"><button type="button" className="ei-primary" onClick={() => navigate("gem")}>Wake the {gem.name} · {gem.cost} RF (E)</button></div>}
@@ -264,7 +270,8 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
       </>}
       {phase === "play" && <p className="ei-hint"><span className="ei-desktop-hint">WASD / arrows to walk · Space or Shift to dash{shieldUnlocked ? " · Q to shield" : ""} · follow the glow · dodge ash spirits · E at a gem</span><span className="ei-mobile-hint">Stick or tap to move · Dash to dodge{shieldUnlocked ? " · Shield to phase through" : ""} · follow the glow</span></p>}
     </div>
-    {phase === "lore" && <Story pages={STORY} doneLabel="Jump!" skippable onDone={beginDrop} />}
+    {phase === "lore" && <Story pages={STORY} doneLabel="Jump!" skippable onDone={() => setPhase("howto")} />}
+    {phase === "howto" && <Story pages={HOWTO} doneLabel="Got it, let's jump!" skippable onDone={beginDrop} />}
     {phase === "epilogue" && <Story pages={EPILOGUE} doneLabel="Celebrate with Companions 🎉" skippable={false} onDone={() => setPhase("victory")} />}
     {phase === "victory" && <div className="ei-victory-overlay" role="dialog" aria-modal="true" aria-label="Victory">
       <div className="ei-victory-card">
@@ -281,7 +288,7 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
         </div>
       </div>
     </div>}
-    {menu && <GameMenu title={menu === "gem" ? "Heartgem" : menu === "log" ? "Isle log" : "Settings"} onClose={busy ? undefined : () => navigate(null)}>
+    {menu && <GameMenu title={menu === "gem" ? "Heartgem" : menu === "log" ? "Isle log" : menu === "help" ? "How to Play" : "Settings"} onClose={busy ? undefined : () => navigate(null)}>
       <div className="ei-menu-body">
       {menu === "gem" ? (gem ? <>
         <p><strong>{gem.name}</strong> · gem {stage + 1} of {GEMS.length}</p>
@@ -294,6 +301,9 @@ function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
       </> : <p>Every gem is awake. The isle is reborn.</p>) : menu === "log" ? <>
         <p>Wake all {GEMS.length} gems to heal the isle. Gems are found in order.</p>
         <ul>{GEMS.map((g, i) => <li key={g.name} className={i < stage ? "ei-done" : i === stage ? "ei-here" : undefined}>{i < stage ? "✓" : "·"} {g.name} · {g.cost} RF → {STAGES[i + 1].name}<br /><small>{i <= stage ? g.hint : "Wake the previous gem to reveal this one."}</small></li>)}</ul>
+      </> : menu === "help" ? <>
+        <p>Move with the stick or WASD / arrows. Follow the glowing trail to the next Heartgem, then wake it with simulated RF.</p>
+        <p>Dash (tap the button, or Space / Shift) gives a quick burst of speed to dodge ash spirits.{shieldUnlocked ? " Shield (tap the button, or Q) lets you pass through spirits for a few seconds." : " A Shield ability unlocks after your second gem."}</p>
       </> : <>
         <label><input type="checkbox" checked={reduced} onChange={e => setReduced(e.target.checked)} /> Reduce motion</label>
         <p>All RF, gems and flares are simulated. Reloading resets this preview. Wallet connection and ownership checks are handled by the FriendSDK runtime.</p>

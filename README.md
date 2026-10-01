@@ -59,6 +59,7 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 
 ## Key Features & Experience
 
+- **In-Game How to Play:** A short controls guide appears right after the intro story and before the drop-in (movement, Dash, ash spirits, gems), and a **How to Play** button in the top bar reopens it any time. When the Shield unlocks after the second gem, a one-time message explains what it does.
 - **Landscape on Phones:** The game is designed for landscape. On phones the host page (see the Vercel wrapper) fills the screen and rotates the frame to landscape when the phone is held upright; the on-screen joystick, Dash and Shield buttons are sized for thumbs.
 - **Shield Protection System:** Unlocks at Gem 2 (`Q` key or Shield button). Grants 5s invulnerability and terrain obstacle phase-through with a 5s cooldown.
 - **Non-Obstructive Toast Alerts:** Transparent glassmorphic top-right spirit alerts.
