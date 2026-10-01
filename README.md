@@ -59,7 +59,7 @@ Open http://localhost:4173, connect a wallet, and select a Rare Friend. If using
 
 ## Key Features & Experience
 
-- **Automatic Landscape on Phones:** On the first tap, the game asks the browser for fullscreen and a real landscape lock (works on Android Chrome). Where that is not allowed (for example iPhone), the game view rotates itself to landscape when the phone is held upright, with taps and the joystick remapped so controls still point the right way.
+- **Landscape on Phones:** The game is designed for landscape. On phones the host page (see the Vercel wrapper) fills the screen and rotates the frame to landscape when the phone is held upright; the on-screen joystick, Dash and Shield buttons are sized for thumbs.
 - **Shield Protection System:** Unlocks at Gem 2 (`Q` key or Shield button). Grants 5s invulnerability and terrain obstacle phase-through with a 5s cooldown.
 - **Non-Obstructive Toast Alerts:** Transparent glassmorphic top-right spirit alerts.
 - **Victory Dialogue & Companions:** Summons pixel-art island companions (Isle Guardian, Phoenix Keeper, Spirit Guide) and triggers a victory story sequence upon waking the 7th gem.

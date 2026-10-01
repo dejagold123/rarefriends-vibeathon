@@ -47,9 +47,4 @@
 .ei-victory-stat b{display:block;font-size:16px;color:#ffb347}
 .ei-victory-stat span{font-size:10px;color:#b8b0a3}
 .ei-victory-actions{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
-
-
-
-/* Phone held upright: rotate the whole game 90deg so it plays in landscape. Touch input is mapped back in index.tsx. */
-.ei-game.ei-rot{position:fixed;top:0;left:0;width:100vh;height:100vw;width:100dvh;height:100dvw;transform-origin:top left;transform:translateX(100vw) rotate(90deg);transform:translateX(100dvw) rotate(90deg);z-index:2147483000}
-.ei-rot .ei-canvas{width:min(100%,calc(100vw * 1.5));width:min(100%,calc(100dvw * 1.5))}
+.ei-crash{display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;padding:20px}.ei-crash h3{margin:0;color:#ffb347}.ei-crash p{margin:0;color:#b8b0a3;max-width:300px}

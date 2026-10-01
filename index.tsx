@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Component, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { GameComponentProps } from "@rarefriends/friendsdk/runtime";
 import { GameMenu } from "@rarefriends/friendsdk/frame";
 import { formatGameAmount } from "@rarefriends/friendsdk/ui";
@@ -8,7 +8,7 @@ import type { GameSnapshot } from "@rarefriends/friendsdk/game";
 import { createFriendReader, spriteFrame, type GenerationSprites } from "@rarefriends/friendsdk/sprites";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, pointInElement, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, vecInElement, type Scene, type StoryPage } from "./scene.js";
+import { DASH_CD, EPILOGUE, GEMS, H, SHIELD_CD, SHIELD_TIME, STAGES, STORY, W, createScene, currentGem, draw, isNearGem, skipDrop, stageIndex, startDrop, tryDash, tryShield, unlockGem, update, type Scene, type StoryPage } from "./scene.js";
 
 type Menu = "gem" | "log" | "settings" | null;
 type Phase = "lore" | "drop" | "play" | "epilogue" | "victory";
@@ -19,14 +19,13 @@ const NO_KEYS = { left: false, right: false, up: false, down: false } as const;
 const burnedRF = (snap: GameSnapshot, price: bigint) => Number((BigInt(snap.plays.filter(p => p.outcomeId !== null).length) * price) / 10n ** 16n) / 100;
 
 /** On-screen analog stick for touch screens. Reports x/y in -1..1. */
-function Joystick({ onMove, rotated }: { onMove: (x: number, y: number) => void; rotated: boolean }) {
+function Joystick({ onMove }: { onMove: (x: number, y: number) => void }) {
   const base = useRef<HTMLDivElement | null>(null), knob = useRef<HTMLDivElement | null>(null), active = useRef<number | null>(null);
   useEffect(() => () => onMove(0, 0), []); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = base.current; if (!el) return;
     const r = el.getBoundingClientRect(), radius = r.width / 2, max = radius * 0.8;
-    const v = vecInElement(e.clientX - (r.left + radius), e.clientY - (r.top + radius), rotated);
-    let dx = v.x, dy = v.y; const d = Math.hypot(dx, dy);
+    let dx = e.clientX - (r.left + radius), dy = e.clientY - (r.top + radius); const d = Math.hypot(dx, dy);
     if (d > max) { dx = (dx / d) * max; dy = (dy / d) * max; }
     if (knob.current) knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
     onMove(dx / max, dy / max);
@@ -60,13 +59,12 @@ function Story({ pages, doneLabel, onDone, skippable }: { pages: readonly StoryP
  * Paying uses the SDK's fixed action client: buy(n) spends n simulated RF for n Embers, play(n) offers them, settle() reveals each flare.
  * Healing depends only on how many gems are woken; flares are cosmetic. Nothing is redeemable.
  */
-export default function EmberIsle({ friendId, client, paused }: GameComponentProps) {
+function EmberIsleGame({ friendId, client, paused }: GameComponentProps) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null), [sprites, setSprites] = useState<GenerationSprites | null>(null);
   const [menu, setMenu] = useState<Menu>(null), [busy, setBusy] = useState(false), [phase, setPhaseState] = useState<Phase>("lore");
   const [error, setError] = useState(""), [message, setMessage] = useState("");
   const [toast, setToast] = useState<{ key: number; title: string; body: string } | null>(null);
   const [reduced, setReduced] = useState(false), [near, setNear] = useState(false), [attempt, setAttempt] = useState(0);
-  const [rotated, setRotated] = useState(false), rotRef = useRef(false), landscapeTried = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null), rootRef = useRef<HTMLElement | null>(null);
   const sceneRef = useRef<Scene>(createScene(0)), spritesRef = useRef<GenerationSprites | null>(null), keysRef = useRef<{ left: boolean; right: boolean; up: boolean; down: boolean }>({ left: false, right: false, up: false, down: false });
   const locked = useRef(false), epoch = useRef(0), nearRef = useRef(false), pendingGem = useRef(false);
@@ -102,22 +100,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
   };
   const shieldRef = useRef(doShield); shieldRef.current = doShield;
 
-  // Phones held upright: the game rotates itself to landscape. (If the browser grants a real orientation lock, this stops matching.)
-  useEffect(() => {
-    const mq = window.matchMedia("(pointer: coarse) and (orientation: portrait) and (max-width: 768px)");
-    const sync = () => { rotRef.current = mq.matches; setRotated(mq.matches); };
-    sync(); mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  /** On the first touch-release, ask the browser for fullscreen + a real landscape lock. Quietly does nothing where unsupported (e.g. iPhone). */
-  const tryLandscape = () => {
-    if (landscapeTried.current || !window.matchMedia("(pointer: coarse)").matches) return;
-    landscapeTried.current = true;
-    const orientation = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
-    const lock = () => { try { void orientation?.lock?.("landscape")?.catch(() => undefined); } catch { /* unsupported */ } };
-    try { const p = rootRef.current?.requestFullscreen?.(); if (p) void p.then(lock, lock); else lock(); } catch { lock(); }
-  };
-
   // Load the session and the selected Friend's artwork.
   useEffect(() => {
     const version = ++epoch.current;
@@ -141,8 +123,13 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     if (!ready) return;
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) { setError("This browser cannot draw the isle."); return; }
-    let raf = 0, last = performance.now();
+    let raf = 0, last = performance.now(), faulted = false;
+    // The next frame is scheduled first, so one bad frame can never end the loop. A fault is logged once.
     const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      try { step(now); } catch (cause) { if (!faulted) { faulted = true; console.error("Ember Isle frame error", cause); } }
+    };
+    const step = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const l = live.current, scene = sceneRef.current, art = spritesRef.current, ph = phaseRef.current;
       const frozen = l.paused || l.menuOpen || l.busy || ph === "lore" || ph === "epilogue";
@@ -161,7 +148,6 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       const isNear = ph === "play" && isNearGem(scene);
       if (isNear !== nearRef.current) { nearRef.current = isNear; setNear(isNear); }
       if (pendingGem.current && !frozen && isNear && !scene.target) { pendingGem.current = false; navRef.current("gem"); }
-      raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -189,7 +175,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     if (l.paused || l.menuOpen || l.busy) return;
     if (phaseRef.current === "drop") { skipDrop(scene); return; }
     if (phaseRef.current !== "play") return;
-    const rect = e.currentTarget.getBoundingClientRect(), u = pointInElement(rect, e.clientX, e.clientY, rotRef.current), x = u.nx * W, y = u.ny * H, g = currentGem(scene);
+    const rect = e.currentTarget.getBoundingClientRect(), x = ((e.clientX - rect.left) / rect.width) * W, y = ((e.clientY - rect.top) / rect.height) * H, g = currentGem(scene);
     if (g && Math.hypot(x - g.x, y - (g.y - 8)) < 12) {
       if (isNearGem(scene)) navigate("gem"); else { scene.target = { x: g.x, y: g.y }; pendingGem.current = true; }
       return;
@@ -254,7 +240,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
     setPhase("lore");
   };
 
-  return <section ref={rootRef} tabIndex={-1} className={rotated ? "ei-game ei-rot" : "ei-game"} aria-label="Ember Isle" aria-busy={busy} onPointerUpCapture={tryLandscape}>
+  return <section ref={rootRef} tabIndex={-1} className="ei-game" aria-label="Ember Isle" aria-busy={busy}>
     <div className="ei-stage" inert={Boolean(menu) || paused || storyOpen || undefined}>
       <canvas ref={canvasRef} className="ei-canvas" width={W} height={H} role="img" aria-label={`Pixel-art island, ${STAGES[stage].name}`} onPointerDown={onPointerDown} />
       {phase !== "lore" && <div className="ei-hud">
@@ -270,7 +256,7 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       {interactive && near && gem && <div className="ei-prompt"><button type="button" className="ei-primary" onClick={() => navigate("gem")}>Wake the {gem.name} · {gem.cost} RF (E)</button></div>}
       {phase === "drop" && <p className="ei-hint">Tap to skip</p>}
       {interactive && <>
-        <Joystick rotated={rotated} onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
+        <Joystick onMove={(x, y) => { stickRef.current = { x, y }; if (x || y) { sceneRef.current.target = null; pendingGem.current = false; } }} />
         <button type="button" className={`ei-dash${dashPct >= 1 ? " ready" : ""}`} style={{ "--p": dashPct } as CSSProperties} aria-label="Dash (Space or Shift)"
           onPointerDown={e => { e.preventDefault(); e.stopPropagation(); doDash(); }} onClick={e => { if (e.detail === 0) doDash(); }}>Dash</button>
         {shieldUnlocked && <button type="button" className={`ei-shield${shieldPct >= 1 ? " ready" : ""}`} style={{ "--p": shieldPct } as CSSProperties} aria-label="Shield (Q)"
@@ -316,4 +302,24 @@ export default function EmberIsle({ friendId, client, paused }: GameComponentPro
       </div>
     </GameMenu>}
   </section>;
+}
+
+/** Last line of defence: if rendering ever throws, show a recovery screen instead of a dead canvas. */
+class Guard extends Component<{ children: ReactNode; onRetry: () => void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(cause: unknown) { console.error("Ember Isle crashed", cause); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <section className="ei-game ei-crash" role="alert">
+      <h3>The isle flickered</h3>
+      <p>Something went wrong. Your simulated progress is safe to restart.</p>
+      <button type="button" className="ei-primary" onClick={this.props.onRetry}>Try again</button>
+    </section>;
+  }
+}
+
+export default function EmberIsle(props: GameComponentProps) {
+  const [attempt, setAttempt] = useState(0);
+  return <Guard key={attempt} onRetry={() => setAttempt(n => n + 1)}><EmberIsleGame {...props} /></Guard>;
 }

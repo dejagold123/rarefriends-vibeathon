@@ -616,19 +616,3 @@ export const EPILOGUE: readonly StoryPage[] = [
   { title: "Phoenix Keeper", body: ["'Together we saved Ember Isle! The ancient lanterns will burn bright forever.'", "'Thank you, brave Friend, for guiding us back home.'"] },
 ];
 
-
-/**
- * Touch mapping for the forced-landscape view. When a phone is held in portrait, the whole game is rotated 90°
- * clockwise with CSS, so screen coordinates must be mapped back into the game's own frame.
- * `rect` is the element's on-screen bounding box (for a rotated element that is the rotated box).
- */
-export function pointInElement(rect: { left: number; top: number; right: number; width: number; height: number }, clientX: number, clientY: number, rotated: boolean): { nx: number; ny: number } {
-  return rotated
-    ? { nx: (clientY - rect.top) / rect.height, ny: (rect.right - clientX) / rect.width }
-    : { nx: (clientX - rect.left) / rect.width, ny: (clientY - rect.top) / rect.height };
-}
-
-/** Converts a screen-space drag vector into the game's own frame (same 90° rotation as above). */
-export function vecInElement(dx: number, dy: number, rotated: boolean): { x: number; y: number } {
-  return rotated ? { x: dy, y: -dx } : { x: dx, y: dy };
-}
